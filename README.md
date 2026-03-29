@@ -52,6 +52,16 @@ What is not implemented yet:
 
 Use these steps on your Linux machine:
 
+Python requirement:
+
+- Python 3.11 or newer
+
+Check it with:
+
+```bash
+python3 --version
+```
+
 ### 1. Clone or update the repo
 
 ```bash
@@ -69,8 +79,8 @@ git pull
 ### 2. Create a virtual environment
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv vtuide
+source vtuide/bin/activate
 ```
 
 ### 3. Install the app
