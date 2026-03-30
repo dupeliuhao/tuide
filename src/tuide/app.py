@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from textual import on
@@ -228,6 +229,18 @@ class TuideApp(App[None]):
         status = self.query_one("#status-bar", Static)
         status.update(self.build_status_text())
 
+    async def wait_for_screen_result(self, screen) -> object | None:
+        """Push a screen and wait for its dismissal result without requiring a worker."""
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[object | None] = loop.create_future()
+
+        def _resolve(result: object | None) -> None:
+            if not future.done():
+                future.set_result(result)
+
+        self.push_screen(screen, callback=_resolve)
+        return await future
+
     @on(DirectoryTree.FileSelected)
     async def open_selected_file(self, event: DirectoryTree.FileSelected) -> None:
         """Open a selected file from the workspace tree."""
@@ -324,7 +337,7 @@ class TuideApp(App[None]):
             return
 
         if active_document.dirty:
-            confirmed = await self.push_screen_wait(
+            confirmed = await self.wait_for_screen_result(
                 ConfirmDialog(
                     "Unsaved changes",
                     f"{active_document.path.name} has unsaved changes. Close it anyway?",
@@ -344,7 +357,7 @@ class TuideApp(App[None]):
         editor = self.query_one(EditorPanel)
         dirty_count = editor.dirty_count
         if dirty_count:
-            confirmed = await self.push_screen_wait(
+            confirmed = await self.wait_for_screen_result(
                 ConfirmDialog(
                     "Unsaved changes",
                     f"You have {dirty_count} unsaved file{'s' if dirty_count != 1 else ''}. Quit anyway?",
@@ -392,7 +405,7 @@ class TuideApp(App[None]):
 
     async def action_show_command_palette(self) -> None:
         """Show a searchable command palette."""
-        command_id = await self.push_screen_wait(CommandPaletteDialog(self.command_items()))
+        command_id = await self.wait_for_screen_result(CommandPaletteDialog(self.command_items()))
         if command_id is None:
             return
         await self.run_command(command_id)
@@ -434,7 +447,7 @@ class TuideApp(App[None]):
             ]
             title = "Editor actions"
 
-        action_id = await self.push_screen_wait(
+        action_id = await self.wait_for_screen_result(
             OptionPickerDialog(title, items, placeholder="Filter actions")
         )
         if action_id is None:
@@ -480,7 +493,7 @@ class TuideApp(App[None]):
 
     async def action_add_workspace_root(self) -> None:
         """Prompt for and add a workspace root."""
-        value = await self.push_screen_wait(
+        value = await self.wait_for_screen_result(
             PromptDialog("Add workspace root", placeholder="/path/to/project")
         )
         if not value:
@@ -502,7 +515,7 @@ class TuideApp(App[None]):
 
     async def action_quick_open(self) -> None:
         """Prompt for a filename and open the first workspace match."""
-        query = await self.push_screen_wait(
+        query = await self.wait_for_screen_result(
             PromptDialog("Quick open", placeholder="filename or partial name")
         )
         if not query:
@@ -513,7 +526,7 @@ class TuideApp(App[None]):
             self.notify("No matching files found", severity="warning")
             return
 
-        selected = await self.push_screen_wait(
+        selected = await self.wait_for_screen_result(
             OptionPickerDialog(
                 "Quick open results",
                 [
@@ -537,7 +550,7 @@ class TuideApp(App[None]):
 
     async def action_find_in_file(self) -> None:
         """Search for text in the active file and open a results tab."""
-        query = await self.push_screen_wait(
+        query = await self.wait_for_screen_result(
             PromptDialog("Find in file", placeholder="search text")
         )
         if not query:
@@ -551,7 +564,7 @@ class TuideApp(App[None]):
 
     async def action_find_in_workspace(self) -> None:
         """Search for text across workspace roots."""
-        query = await self.push_screen_wait(
+        query = await self.wait_for_screen_result(
             PromptDialog("Find in workspace", placeholder="search text")
         )
         if not query:
@@ -570,7 +583,7 @@ class TuideApp(App[None]):
             return
 
         current = self.workspace_state.roots[0]
-        confirmed = await self.push_screen_wait(
+        confirmed = await self.wait_for_screen_result(
             ConfirmDialog(
                 "Remove workspace root",
                 f"Remove {current} from the workspace?",
@@ -612,7 +625,7 @@ class TuideApp(App[None]):
         if not branches:
             self.notify("No Git branches found", severity="warning")
             return
-        branch = await self.push_screen_wait(
+        branch = await self.wait_for_screen_result(
             OptionPickerDialog(
                 "Diff with branch",
                 [ChoiceItem(id=name, label=name) for name in branches],
@@ -646,7 +659,7 @@ class TuideApp(App[None]):
         if not history_entries:
             self.notify("Unable to load file history", severity="error")
             return
-        choice = await self.push_screen_wait(
+        choice = await self.wait_for_screen_result(
             OptionPickerDialog(
                 f"History for {path.name}",
                 [
@@ -694,7 +707,7 @@ class TuideApp(App[None]):
         if context is None:
             return
         path, repo_root = context
-        value = await self.push_screen_wait(
+        value = await self.wait_for_screen_result(
             PromptDialog("Line history", placeholder="start:end, e.g. 10:20")
         )
         if not value:
@@ -734,7 +747,7 @@ class TuideApp(App[None]):
             self.notify("Open a file first", severity="warning")
             return
 
-        symbol = await self.push_screen_wait(
+        symbol = await self.wait_for_screen_result(
             PromptDialog(f"{intent.title()} symbol", placeholder="symbol name")
         )
         if not symbol:
