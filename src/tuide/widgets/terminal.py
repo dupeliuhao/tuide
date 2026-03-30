@@ -29,7 +29,7 @@ class TerminalPanel(Vertical):
         self._backend_error: str | None = None
 
     def compose(self):
-        yield Label("AI Console", classes="panel-title")
+        yield Label("Terminal", classes="panel-title")
         yield Label(f"Shell target: {self.shell_hint}", classes="panel-subtitle", id="terminal-subtitle")
         fallback = self._build_terminal_widget()
         if fallback is not None:
@@ -44,10 +44,10 @@ class TerminalPanel(Vertical):
             self._terminal_widget = None
             self._backend_error = str(exc)
             return Static(
-                "Console backend unavailable\n\n"
-                "This panel is reserved for AI-assisted terminal work such as Claude Code, Kiro, "
-                "or a project shell.\n\n"
-                "The app is staying in fallback mode for now, so the shell design still holds while "
+                "Embedded terminal unavailable\n\n"
+                "This panel is reserved for a project shell. You can use it for normal terminal work, "
+                "build tools, Git commands, or AI CLI tools launched by hand.\n\n"
+                "The app is staying in fallback mode for now, so the layout still holds while "
                 "we sort out backend compatibility.\n\n"
                 f"Shell target\n{self.shell_hint}\n\n"
                 "Next step\nInstall a compatible terminal backend or keep using this space as a "
