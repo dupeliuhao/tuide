@@ -55,16 +55,9 @@ class TuideApp(App[None]):
         dock: top;
     }
 
-    .menu-group-label {
-        color: #7f95aa;
-        text-style: bold;
-        margin: 0 1 0 0;
-        padding: 0 0 0 0;
-    }
-
     .menu-button {
         margin-right: 0;
-        min-width: 10;
+        min-width: 6;
         background: #111a22;
         border: tall #223240;
         color: #dce7ef;
@@ -369,6 +362,8 @@ class TuideApp(App[None]):
             await self.action_code_goto_definition()
         elif button_id == "menu-code-refs":
             await self.action_code_find_references()
+        elif button_id == "menu-quit":
+            await self.action_request_quit()
 
     @on(TextArea.Changed)
     @on(TextArea.SelectionChanged)
