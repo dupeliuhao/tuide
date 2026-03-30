@@ -26,10 +26,11 @@ class TerminalPanel(Vertical):
         self.shell_hint = shell_hint
         self._terminal_widget = None
         self._fallback: Static | None = None
+        self._backend_error: str | None = None
 
     def compose(self):
-        yield Label("Terminal", classes="panel-title")
-        yield Label(f"Shell: {self.shell_hint}", classes="panel-subtitle", id="terminal-subtitle")
+        yield Label("AI Console", classes="panel-title")
+        yield Label(f"Shell target: {self.shell_hint}", classes="panel-subtitle", id="terminal-subtitle")
         fallback = self._build_terminal_widget()
         if fallback is not None:
             self._fallback = fallback
@@ -41,14 +42,17 @@ class TerminalPanel(Vertical):
             from textual_terminal import Terminal
         except Exception as exc:
             self._terminal_widget = None
+            self._backend_error = str(exc)
             return Static(
-                "Embedded terminal backend unavailable.\n\n"
-                "If `textual-terminal` is incompatible with your installed Textual version, "
-                "the app will continue with this fallback view.\n\n"
-                "Current shell target:\n"
-                f"{self.shell_hint}\n\n"
-                f"Backend error:\n{exc}",
-                classes="panel-body",
+                "Console backend unavailable\n\n"
+                "This panel is reserved for AI-assisted terminal work such as Claude Code, Kiro, "
+                "or a project shell.\n\n"
+                "The app is staying in fallback mode for now, so the shell design still holds while "
+                "we sort out backend compatibility.\n\n"
+                f"Shell target\n{self.shell_hint}\n\n"
+                "Next step\nInstall a compatible terminal backend or keep using this space as a "
+                "layout placeholder during UI work.",
+                classes="terminal-fallback-copy",
                 id="terminal-fallback",
             )
 

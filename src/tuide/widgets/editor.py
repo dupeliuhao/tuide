@@ -51,8 +51,11 @@ class EditorPanel(Vertical):
         with TabbedContent(id="editor-tabs"):
             with TabPane("Welcome", id="welcome-tab"):
                 yield Label(
-                    "Linux-first tuide shell\n\nSelect a file on the left to open it here.",
-                    classes="panel-body",
+                    "tuide\n\n"
+                    "A Linux-first terminal IDE shell for workspace navigation, editing, Git workflows, "
+                    "and embedded AI tooling.\n\n"
+                    "Start by opening a file from the workspace tree on the left.",
+                    classes="editor-welcome",
                     id="welcome-copy",
                 )
 

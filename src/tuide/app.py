@@ -38,74 +38,133 @@ class TuideApp(App[None]):
     CSS = """
     Screen {
         layout: vertical;
-        background: #11161c;
-        color: #f3efe2;
+        background: #0b0f13;
+        color: #eef2f5;
     }
 
     #root {
         height: 1fr;
+        padding: 0 1 1 1;
     }
 
     .menu-bar {
         height: auto;
-        padding: 0 1;
-        background: #0d1318;
+        padding: 1 0 1 0;
+        background: transparent;
+        dock: top;
     }
 
-    .menu-bar Button {
+    .menu-group-label {
+        color: #7f95aa;
+        text-style: bold;
+        margin: 0 1 0 0;
+        padding: 1 0 0 0;
+    }
+
+    .menu-button {
         margin-right: 1;
+        min-width: 10;
+        background: #111a22;
+        border: tall #223240;
+        color: #dce7ef;
+    }
+
+    .menu-button:hover {
+        background: #16222c;
+    }
+
+    .menu-button.-active,
+    .menu-button:focus {
+        border: tall #d8a548;
+        color: #fff6dd;
     }
 
     #main-layout {
         height: 1fr;
+        padding-top: 1;
     }
 
     .panel-frame {
-        border: round #4a5568;
-        background: #17212b;
-        padding: 0 1;
+        border: round #243748;
+        background: #10171e;
+        padding: 0 1 1 1;
         min-width: 24;
     }
 
     .panel-frame:focus-within {
-        border: round #d7a84a;
+        border: round #d8a548;
+        background: #121c24;
     }
 
     #workspace-panel {
-        width: 28;
+        width: 30;
     }
 
     #editor-panel {
         width: 1fr;
+        margin: 0 1;
     }
 
     #terminal-panel {
-        width: 32;
+        width: 34;
     }
 
     .panel-title {
         text-style: bold;
-        color: #d7a84a;
+        color: #f2c66a;
         padding-top: 1;
+        padding-bottom: 1;
     }
 
     .panel-body {
         padding: 1 0 1 0;
-        color: #d9e2ec;
+        color: #ced9e0;
     }
 
     .panel-subtitle {
-        color: #8fa3b8;
+        color: #8ea1b1;
         padding-bottom: 1;
+    }
+
+    .workspace-summary {
+        background: #0d141b;
+        border: round #1b2a37;
+        color: #b8c7d3;
+        height: auto;
+        padding: 1;
+        margin-bottom: 1;
+    }
+
+    #workspace-root-select {
+        margin-bottom: 1;
     }
 
     #workspace-tree {
         height: 1fr;
-        background: #17212b;
+        background: #0d141b;
+        border: round #1b2a37;
+        padding: 0 1;
     }
 
     #editor-tabs {
         height: 1fr;
+        background: transparent;
+        border-top: solid #1f2d38;
+        padding-top: 1;
+    }
+
+    #editor-subtitle {
+        color: #9ab0bf;
+        padding-bottom: 1;
+    }
+
+    #welcome-copy,
+    .editor-welcome {
+        color: #ced9e0;
+        padding: 2 1;
+        background: #0d141b;
+        border: round #1b2a37;
+        width: 1fr;
     }
 
     .diff-view {
@@ -117,11 +176,19 @@ class TuideApp(App[None]):
         padding: 0 1 1 0;
     }
 
+    .terminal-fallback-copy {
+        background: #0d141b;
+        border: round #1b2a37;
+        color: #ced9e0;
+        padding: 2 1;
+        margin-top: 1;
+    }
+
     #status-bar {
         dock: bottom;
         height: 1;
-        background: #0d1318;
-        color: #cbd5e0;
+        background: #060a0d;
+        color: #aab8c4;
         padding: 0 1;
     }
     """
@@ -208,18 +275,18 @@ class TuideApp(App[None]):
         document = editor_panel.active_document if editor_panel is not None else None
         cursor = editor_panel.active_cursor() if editor_panel is not None else None
         file_text = document.path.name if document is not None else "no file"
-        dirty_text = "dirty" if document and document.dirty else "clean"
+        dirty_text = "edited" if document and document.dirty else "clean"
         cursor_text = f"ln {cursor[0]}, col {cursor[1]}" if cursor is not None else "ln -, col -"
         return (
-            f"{file_text} | {cursor_text} | {dirty_text} | {root_text} | platform={self.platform.system} | "
-            f"terminal={self.capabilities.terminal} | git={self.capabilities.git} | "
-            f"lsp={self.capabilities.lsp}"
+            f"{file_text} | {cursor_text} | {dirty_text} | {root_text} | {self.platform.system.lower()} | "
+            f"terminal {self.capabilities.terminal} | git {self.capabilities.git} | "
+            f"lsp {self.capabilities.lsp}"
         )
 
     def on_mount(self) -> None:
         """Set initial focus and title."""
         self.title = "tuide"
-        self.sub_title = "Linux-first Textual IDE scaffold"
+        self.sub_title = "Terminal IDE shell"
         self.apply_panel_widths()
         self.query_one(EditorPanel).focus()
         self.refresh_status()

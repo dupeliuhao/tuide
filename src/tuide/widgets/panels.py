@@ -1,4 +1,4 @@
-"""Early panels for the Linux-first shell."""
+"""Core shell panels for the Linux-first scaffold."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from tuide.models import WorkspaceState
 
 
 class PanelFrame(Vertical):
-    """Simple framed panel used until richer widgets land."""
+    """Reusable framed panel shell."""
 
     DEFAULT_CLASSES = "panel-frame"
     can_focus = True
@@ -27,7 +27,7 @@ class PanelFrame(Vertical):
 
 
 class WorkspacePanel(PanelFrame):
-    """Workspace area with a real file tree."""
+    """Workspace area with a styled file tree."""
 
     def __init__(self, workspace_state: WorkspaceState) -> None:
         super().__init__("", "", id="workspace-panel")
@@ -41,11 +41,11 @@ class WorkspacePanel(PanelFrame):
     def compose(self):
         root_label = self.primary_root.name or str(self.primary_root)
         title = f"Workspace ({len(self.workspace_state.roots)})"
-        subtitle = f"Root: {root_label}"
+        subtitle = f"Active root: {root_label}"
         yield Label(title, classes="panel-title")
         yield Label(subtitle, classes="panel-subtitle")
         root_summary = "\n".join(f"- {root}" for root in self.workspace_state.roots[:5])
-        yield Static(root_summary, classes="panel-body", id="workspace-roots")
+        yield Static(root_summary, classes="workspace-summary", id="workspace-roots")
         yield Select(
             [(str(root), str(root)) for root in self.workspace_state.roots],
             value=str(self.primary_root),
@@ -60,7 +60,7 @@ class WorkspacePanel(PanelFrame):
         tree = self.query_one("#workspace-tree", DirectoryTree)
         tree.path = root
         subtitle = self.query_one(".panel-subtitle", Label)
-        subtitle.update(f"Root: {root.name or root}")
+        subtitle.update(f"Active root: {root.name or root}")
 
         select = self.query_one("#workspace-root-select", Select)
         select.value = str(root)
