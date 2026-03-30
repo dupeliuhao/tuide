@@ -198,7 +198,12 @@ class TuideApp(App[None]):
         """Return the first-pass status bar content."""
         root_count = len(self.workspace_state.roots)
         root_text = f"{root_count} workspace root{'s' if root_count != 1 else ''}"
-        editor_panel = self.query_one(EditorPanel) if self.is_mounted else None
+        editor_panel = None
+        if self.is_mounted:
+            try:
+                editor_panel = self.query_one(EditorPanel)
+            except Exception:
+                editor_panel = None
         document = editor_panel.active_document if editor_panel is not None else None
         cursor = editor_panel.active_cursor() if editor_panel is not None else None
         file_text = document.path.name if document is not None else "no file"
