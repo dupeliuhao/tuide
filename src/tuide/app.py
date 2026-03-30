@@ -146,11 +146,11 @@ class TuideApp(App[None]):
         color: #b8c7d3;
         height: auto;
         padding: 0 1;
-        margin: 0 1 1 1;
+        margin: 0;
     }
 
     #workspace-root-select {
-        margin: 0 1 1 1;
+        margin: 0;
     }
 
     #workspace-tree {
@@ -158,7 +158,7 @@ class TuideApp(App[None]):
         background: #0d141b;
         border: round #1b2a37;
         padding: 0;
-        margin: 0 1 1 1;
+        margin: 0;
     }
 
     #editor-tabs {
@@ -166,7 +166,7 @@ class TuideApp(App[None]):
         background: transparent;
         border-top: solid #1f2d38;
         padding-top: 0;
-        margin: 0 1 1 1;
+        margin: 0;
     }
 
     #editor-subtitle {
@@ -197,7 +197,7 @@ class TuideApp(App[None]):
         border: round #1b2a37;
         color: #ced9e0;
         padding: 1 1;
-        margin: 0 1 1 1;
+        margin: 0;
     }
 
     #status-bar {
