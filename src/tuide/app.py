@@ -140,6 +140,7 @@ class TuideApp(App[None]):
         color: #8ea1b1;
         height: 1;
         padding: 0 1;
+        display: none;
     }
 
     .workspace-summary {
@@ -168,7 +169,7 @@ class TuideApp(App[None]):
     #editor-tabs {
         height: 1fr;
         background: transparent;
-        border-top: solid #1f2d38;
+        border-top: none;
         padding-top: 0;
         margin: 0;
     }
@@ -177,6 +178,7 @@ class TuideApp(App[None]):
         color: #9ab0bf;
         padding: 0 1;
         height: 1;
+        display: none;
     }
 
     #welcome-copy,

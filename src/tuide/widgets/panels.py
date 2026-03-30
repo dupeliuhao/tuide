@@ -55,6 +55,10 @@ class WorkspacePanel(PanelFrame):
         )
         yield DirectoryTree(str(self.primary_root), id="workspace-tree")
 
+    def on_mount(self) -> None:
+        """Hide the root selector unless it is actually needed."""
+        self._sync_root_selector_visibility()
+
     def set_active_root(self, root: Path) -> None:
         """Switch the active root shown by the tree."""
         tree = self.query_one("#workspace-tree", DirectoryTree)
@@ -73,3 +77,9 @@ class WorkspacePanel(PanelFrame):
         select = self.query_one("#workspace-root-select", Select)
         select.set_options([(str(root), str(root)) for root in workspace_state.roots])
         self.set_active_root(self.primary_root)
+        self._sync_root_selector_visibility()
+
+    def _sync_root_selector_visibility(self) -> None:
+        """Only show the root selector when multiple roots exist."""
+        select = self.query_one("#workspace-root-select", Select)
+        select.display = len(self.workspace_state.roots) > 1
