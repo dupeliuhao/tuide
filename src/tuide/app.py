@@ -29,6 +29,7 @@ from tuide.widgets.dialogs import (
 from tuide.widgets.editor import EditorPanel
 from tuide.widgets.menubar import MenuBar
 from tuide.widgets.panels import WorkspacePanel
+from tuide.widgets.splitter import VerticalSplitter
 from tuide.widgets.terminal import TerminalPanel, terminal_backend_available
 
 
@@ -94,6 +95,20 @@ class TuideApp(App[None]):
     .panel-frame:focus-within {
         border: round #d8a548;
         background: #121c24;
+    }
+
+    .panel-splitter {
+        width: 1;
+        min-width: 1;
+        height: 1fr;
+        background: #0b1014;
+        color: #5e7488;
+    }
+
+    .panel-splitter:hover,
+    .panel-splitter.-dragging {
+        background: #d8a548;
+        color: #0b1014;
     }
 
     #workspace-panel {
@@ -246,7 +261,9 @@ class TuideApp(App[None]):
             yield MenuBar()
             with Horizontal(id="main-layout"):
                 yield WorkspacePanel(self.workspace_state)
+                yield VerticalSplitter(self.adjust_workspace_by, id="workspace-splitter")
                 yield EditorPanel()
+                yield VerticalSplitter(self.adjust_terminal_by, id="terminal-splitter")
                 yield TerminalPanel(self.platform.default_shell)
             yield Static(self.build_status_text(), id="status-bar")
         yield Footer()
@@ -290,6 +307,7 @@ class TuideApp(App[None]):
         self.apply_panel_widths()
         self.query_one(EditorPanel).focus()
         self.refresh_status()
+        self.sync_splitter_visibility()
 
     def refresh_status(self) -> None:
         """Update the first-pass status bar."""
@@ -381,12 +399,14 @@ class TuideApp(App[None]):
         """Show or hide the workspace panel."""
         panel = self.query_one("#workspace-panel")
         panel.display = not panel.display
+        self.sync_splitter_visibility()
         self.refresh_status()
 
     def action_toggle_terminal(self) -> None:
         """Show or hide the terminal panel."""
         panel = self.query_one("#terminal-panel")
         panel.display = not panel.display
+        self.sync_splitter_visibility()
         self.refresh_status()
 
     def action_save_file(self) -> None:
@@ -853,6 +873,23 @@ class TuideApp(App[None]):
         self.config.terminal_width = self.terminal_width
         self.config.default_workspace = str(self.workspace_state.roots[0])
         self.config_store.save(self.config)
+
+    def sync_splitter_visibility(self) -> None:
+        """Keep splitters aligned with panel visibility."""
+        workspace_visible = self.query_one("#workspace-panel").display
+        terminal_visible = self.query_one("#terminal-panel").display
+        self.query_one("#workspace-splitter").display = workspace_visible
+        self.query_one("#terminal-splitter").display = terminal_visible
+
+    def adjust_workspace_by(self, delta: int) -> None:
+        """Resize the workspace panel by a drag delta."""
+        self.workspace_width = min(60, max(20, self.workspace_width + delta))
+        self.apply_panel_widths()
+
+    def adjust_terminal_by(self, delta: int) -> None:
+        """Resize the terminal panel by a drag delta."""
+        self.terminal_width = min(60, max(24, self.terminal_width - delta))
+        self.apply_panel_widths()
 
     def action_shrink_workspace(self) -> None:
         self.workspace_width = max(20, self.workspace_width - 2)
