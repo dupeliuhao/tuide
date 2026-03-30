@@ -73,7 +73,3 @@ class WorkspacePanel(PanelFrame):
         select = self.query_one("#workspace-root-select", Select)
         select.set_options([(str(root), str(root)) for root in workspace_state.roots])
         self.set_active_root(self.primary_root)
-
-        summary = self.query_one("#workspace-roots", Static)
-        root_summary = "\n".join(f"- {root}" for root in workspace_state.roots[:5])
-        summary.update(root_summary)

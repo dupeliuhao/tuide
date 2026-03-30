@@ -127,6 +127,7 @@ class TuideApp(App[None]):
     .panel-title {
         text-style: bold;
         color: #f2c66a;
+        height: 1;
         padding: 0 1;
     }
 
@@ -137,6 +138,7 @@ class TuideApp(App[None]):
 
     .panel-subtitle {
         color: #8ea1b1;
+        height: 1;
         padding: 0 1;
     }
 
@@ -147,10 +149,12 @@ class TuideApp(App[None]):
         height: auto;
         padding: 0 1;
         margin: 0;
+        display: none;
     }
 
     #workspace-root-select {
         margin: 0;
+        height: 3;
     }
 
     #workspace-tree {
@@ -172,6 +176,7 @@ class TuideApp(App[None]):
     #editor-subtitle {
         color: #9ab0bf;
         padding: 0 1;
+        height: 1;
     }
 
     #welcome-copy,
@@ -198,6 +203,7 @@ class TuideApp(App[None]):
         color: #ced9e0;
         padding: 1 1;
         margin: 0;
+        height: 1fr;
     }
 
     #status-bar {
