@@ -10,7 +10,7 @@ def terminal_backend_available() -> bool:
     """Return whether textual-terminal can be imported."""
     try:
         from textual_terminal import Terminal  # noqa: F401
-    except ModuleNotFoundError:
+    except Exception:
         return False
     return True
 
@@ -39,12 +39,15 @@ class TerminalPanel(Vertical):
         """Try to build a real terminal widget, otherwise return a fallback view."""
         try:
             from textual_terminal import Terminal
-        except ModuleNotFoundError:
+        except Exception as exc:
             self._terminal_widget = None
             return Static(
-                "Install `textual-terminal` to enable the embedded Linux terminal.\n\n"
+                "Embedded terminal backend unavailable.\n\n"
+                "If `textual-terminal` is incompatible with your installed Textual version, "
+                "the app will continue with this fallback view.\n\n"
                 "Current shell target:\n"
-                f"{self.shell_hint}",
+                f"{self.shell_hint}\n\n"
+                f"Backend error:\n{exc}",
                 classes="panel-body",
                 id="terminal-fallback",
             )

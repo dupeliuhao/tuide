@@ -96,6 +96,8 @@ If `textual-terminal` fails to install for any reason, you can still test the ap
 pip install -e .
 ```
 
+If `textual-terminal` installs but is incompatible with your local `textual` version, `tuide` should now fall back to a non-terminal placeholder instead of crashing on startup.
+
 ### 4. Launch the app
 
 Run from the repo root so the workspace tree starts there by default:
