@@ -338,37 +338,37 @@ class TuideApp(App[None]):
         self.refresh_status()
 
     @on(Button.Pressed)
-    async def handle_button_press(self, event: Button.Pressed) -> None:
+    def handle_button_press(self, event: Button.Pressed) -> None:
         """Route menu-bar button clicks to actions."""
         button_id = event.button.id
         if button_id is None or not button_id.startswith("menu-"):
             return
         if button_id == "menu-add-root":
-            await self.action_add_workspace_root()
+            self.run_worker(self.action_add_workspace_root(), exclusive=False)
         elif button_id == "menu-remove-root":
-            await self.action_remove_workspace_root()
+            self.run_worker(self.action_remove_workspace_root(), exclusive=False)
         elif button_id == "menu-quick-open":
-            await self.action_quick_open()
+            self.run_worker(self.action_quick_open(), exclusive=False)
         elif button_id == "menu-find-file":
-            await self.action_find_in_file()
+            self.run_worker(self.action_find_in_file(), exclusive=False)
         elif button_id == "menu-find-workspace":
-            await self.action_find_in_workspace()
+            self.run_worker(self.action_find_in_workspace(), exclusive=False)
         elif button_id == "menu-palette":
-            await self.action_show_command_palette()
+            self.run_worker(self.action_show_command_palette(), exclusive=False)
         elif button_id == "menu-git-diff":
-            await self.action_git_diff()
+            self.run_worker(self.action_git_diff(), exclusive=False)
         elif button_id == "menu-git-history":
-            await self.action_git_history()
+            self.run_worker(self.action_git_history(), exclusive=False)
         elif button_id == "menu-git-blame":
-            await self.action_git_blame()
+            self.run_worker(self.action_git_blame(), exclusive=False)
         elif button_id == "menu-git-line-history":
-            await self.action_git_line_history()
+            self.run_worker(self.action_git_line_history(), exclusive=False)
         elif button_id == "menu-code-def":
-            await self.action_code_goto_definition()
+            self.run_worker(self.action_code_goto_definition(), exclusive=False)
         elif button_id == "menu-code-refs":
-            await self.action_code_find_references()
+            self.run_worker(self.action_code_find_references(), exclusive=False)
         elif button_id == "menu-quit":
-            await self.action_request_quit()
+            self.run_worker(self.action_request_quit(), exclusive=False)
 
     @on(TextArea.Changed)
     @on(TextArea.SelectionChanged)
@@ -459,7 +459,7 @@ class TuideApp(App[None]):
 
     def action_escape_focus(self) -> None:
         """Return focus to the editor when no modal is active."""
-        if isinstance(self.screen, ModalScreen):
+        if len(self.screen_stack) > 1:
             self.pop_screen()
             return
         self.query_one(EditorPanel).focus()
