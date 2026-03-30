@@ -83,18 +83,17 @@ class TuideApp(App[None]):
     #main-layout {
         height: 1fr;
         padding-top: 0;
-        background: #243748;
+        background: #10171e;
     }
 
     .panel-frame {
-        border: round #243748;
+        border: none;
         background: #10171e;
         padding: 0 0 0 0;
         min-width: 24;
     }
 
     .panel-frame:focus-within {
-        border: round #d8a548;
         background: #121c24;
     }
 
@@ -102,8 +101,8 @@ class TuideApp(App[None]):
         width: 1;
         min-width: 1;
         height: 1fr;
-        background: #243748;
-        color: #243748;
+        background: #1f2d38;
+        color: #1f2d38;
     }
 
     .panel-splitter:hover,
