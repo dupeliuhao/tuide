@@ -58,8 +58,10 @@ class TuideApp(App[None]):
     .menu-button {
         margin-right: 0;
         min-width: 4;
+        height: 1;
+        padding: 0 1;
         background: #111a22;
-        border: tall #223240;
+        border: none;
         color: #dce7ef;
     }
 
@@ -69,7 +71,7 @@ class TuideApp(App[None]):
 
     .menu-button.-active,
     .menu-button:focus {
-        border: tall #d8a548;
+        background: #243342;
         color: #fff6dd;
     }
 

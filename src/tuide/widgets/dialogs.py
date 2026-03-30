@@ -5,6 +5,7 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.events import Key
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, OptionList
 from textual.widgets.option_list import Option
@@ -12,7 +13,16 @@ from textual.widgets.option_list import Option
 from tuide.models import ChoiceItem, CommandItem
 
 
-class ConfirmDialog(ModalScreen[bool | None]):
+class DismissibleModal(ModalScreen):
+    """Modal base class that always lets Escape back out."""
+
+    def on_key(self, event: Key) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+            event.stop()
+
+
+class ConfirmDialog(DismissibleModal[bool | None]):
     """A simple confirm / cancel dialog."""
 
     CSS = """
@@ -103,7 +113,7 @@ class ConfirmDialog(ModalScreen[bool | None]):
         self.dismiss(None)
 
 
-class HelpDialog(ModalScreen[None]):
+class HelpDialog(DismissibleModal[None]):
     """A lightweight keybinding help overlay."""
 
     CSS = """
@@ -170,7 +180,7 @@ class HelpDialog(ModalScreen[None]):
             self.dismiss(None)
 
 
-class PromptDialog(ModalScreen[str | None]):
+class PromptDialog(DismissibleModal[str | None]):
     """Prompt for a single text value."""
 
     CSS = """
@@ -244,7 +254,7 @@ class PromptDialog(ModalScreen[str | None]):
         self.dismiss(None)
 
 
-class CommandPaletteDialog(ModalScreen[str | None]):
+class CommandPaletteDialog(DismissibleModal[str | None]):
     """Searchable command palette."""
 
     CSS = """
@@ -332,7 +342,7 @@ class CommandPaletteDialog(ModalScreen[str | None]):
         self.dismiss(event.option_id)
 
 
-class OptionPickerDialog(ModalScreen[str | None]):
+class OptionPickerDialog(DismissibleModal[str | None]):
     """Pick from a list of options with lightweight filtering."""
 
     CSS = """
