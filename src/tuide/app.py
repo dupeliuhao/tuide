@@ -50,7 +50,7 @@ class TuideApp(App[None]):
 
     .menu-bar {
         height: auto;
-        padding: 0 0 1 0;
+        padding: 0;
         background: transparent;
         dock: top;
     }
@@ -83,6 +83,7 @@ class TuideApp(App[None]):
     #main-layout {
         height: 1fr;
         padding-top: 0;
+        background: #243748;
     }
 
     .panel-frame {
@@ -101,8 +102,8 @@ class TuideApp(App[None]):
         width: 1;
         min-width: 1;
         height: 1fr;
-        background: #0b1014;
-        color: #5e7488;
+        background: #243748;
+        color: #243748;
     }
 
     .panel-splitter:hover,
