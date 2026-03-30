@@ -447,7 +447,8 @@ class TuideApp(App[None]):
             )
             if not confirmed:
                 return
-        self.exit()
+        # Defer exit until the confirm screen has fully unwound.
+        self.call_after_refresh(self.exit)
 
     def action_restart_terminal(self) -> None:
         """Restart the embedded terminal when available."""
