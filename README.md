@@ -21,7 +21,7 @@ The current build is a Linux-first shell with these working or first-pass featur
 - in-file search with `Ctrl+F`
 - workspace-wide search with `Ctrl+Shift+F`
 - keybinding help overlay with `?`
-- right-panel embedded terminal host with fallback messaging if `textual-terminal` is missing
+- right-panel embedded terminal intended to run a real shell session
 - keyboard-based panel resizing
 - Git file diff/history/blame tabs for the active file
 - Git line-history tab for an entered line range
@@ -36,7 +36,7 @@ The long-term roadmap is in [docs/implementation-plan.md](D:\Github\tuide\docs\i
 
 - Phase 1: editor shell MVP
 - partial Phase 2: dialogs, menu, palette, and interaction polish
-- partial Phase 4: Linux-first terminal host path
+- partial Phase 4: Linux-first embedded terminal path
 - early slices of Git and code-intelligence workflows
 
 What is not implemented yet:
@@ -90,13 +90,23 @@ python -m pip install --upgrade pip
 pip install -e .[linux]
 ```
 
+`tuide` currently expects a Textual version that stays compatible with `textual-terminal`.
+The project now pins `textual` to a compatible range in `pyproject.toml`, so a fresh install
+should give you a real embedded shell on Linux.
+
 If `textual-terminal` fails to install for any reason, you can still test the app shell without the embedded terminal:
 
 ```bash
 pip install -e .
 ```
 
-If `textual-terminal` installs but is incompatible with your local `textual` version, `tuide` should now fall back to a non-terminal placeholder instead of crashing on startup.
+If you installed the project before this pin was added, refresh the environment with:
+
+```bash
+pip install --upgrade --force-reinstall -e .[linux]
+```
+
+If `textual-terminal` still ends up incompatible with your local environment, `tuide` will fall back to a placeholder instead of crashing on startup.
 
 ### 4. Launch the app
 
@@ -131,9 +141,11 @@ Once the app is open, try this:
 13. Add a second workspace root and switch between roots from the left panel selector.
 14. Try `Diff`, `History`, `Blame`, or `Line Hist` from the top bar on a file inside a Git repo.
 15. Press `?` or use the top bar code actions to exercise the LSP and AI fallback plumbing.
-16. If `textual-terminal` is installed, confirm the right panel starts a shell.
-17. Press `Ctrl+R` and confirm the terminal restarts.
-18. Press `Ctrl+Q` with a dirty file and confirm the quit warning appears.
+16. Confirm the right panel starts a real shell session.
+17. Run a simple command such as `ls`.
+18. Try launching an external CLI such as `kiro-cli` if it is installed.
+19. Press `Ctrl+R` and confirm the terminal restarts.
+20. Press `Ctrl+Q` with a dirty file and confirm the quit warning appears.
 
 ## Keybindings right now
 
@@ -158,4 +170,5 @@ Once the app is open, try this:
 
 - The app is currently Linux-first by design.
 - Windows and macOS abstraction seams are already present, but those targets are not the active testing focus yet.
-- If `git`, LSP servers, or optional terminal dependencies are missing, those advanced features are expected to be absent for now.
+- The right panel is meant to be a normal terminal, not a dedicated AI-only surface.
+- If `git`, LSP servers, or terminal dependencies are missing, those advanced features are expected to be absent for now.
