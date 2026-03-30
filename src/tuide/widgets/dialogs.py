@@ -39,6 +39,11 @@ class ConfirmDialog(ModalScreen[bool | None]):
         padding-bottom: 1;
     }
 
+    #confirm-hint {
+        color: #8fa3b8;
+        padding-bottom: 1;
+    }
+
     #confirm-actions {
         width: 100%;
         height: auto;
@@ -73,8 +78,9 @@ class ConfirmDialog(ModalScreen[bool | None]):
         with Vertical(id="confirm-dialog"):
             yield Label(self._title, id="confirm-title")
             yield Label(self._message, id="confirm-message")
+            yield Label("Esc or Back to return", id="confirm-hint")
             with Horizontal(id="confirm-actions"):
-                yield Button(self._cancel_label, id="confirm-cancel")
+                yield Button("Back", id="confirm-cancel")
                 yield Button(self._confirm_label, variant="warning", id="confirm-ok")
 
     def on_mount(self) -> None:
@@ -190,6 +196,11 @@ class PromptDialog(ModalScreen[str | None]):
         margin-bottom: 1;
     }
 
+    #prompt-hint {
+        color: #8fa3b8;
+        padding-bottom: 1;
+    }
+
     #prompt-actions {
         width: 100%;
         height: auto;
@@ -212,8 +223,9 @@ class PromptDialog(ModalScreen[str | None]):
         with Vertical(id="prompt-dialog"):
             yield Label(self._title, id="prompt-title")
             yield Input(value=self._value, placeholder=self._placeholder, id="prompt-input")
+            yield Label("Enter to confirm, Esc or Back to return", id="prompt-hint")
             with Horizontal(id="prompt-actions"):
-                yield Button("Cancel", id="prompt-cancel")
+                yield Button("Back", id="prompt-cancel")
                 yield Button("OK", variant="success", id="prompt-ok")
 
     def on_mount(self) -> None:
@@ -261,6 +273,13 @@ class CommandPaletteDialog(ModalScreen[str | None]):
     #palette-options {
         height: 1fr;
     }
+
+    #palette-actions {
+        width: 100%;
+        height: auto;
+        align: right middle;
+        margin-top: 1;
+    }
     """
 
     BINDINGS = [
@@ -277,12 +296,18 @@ class CommandPaletteDialog(ModalScreen[str | None]):
             yield Input(placeholder="Type to filter commands", id="palette-input")
             options = [Option(f"{item.label} — {item.description}", id=item.id) for item in self._commands]
             yield OptionList(*options, id="palette-options")
+            with Horizontal(id="palette-actions"):
+                yield Button("Back", id="palette-cancel")
 
     def on_mount(self) -> None:
         self.query_one("#palette-input", Input).focus()
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "palette-cancel":
+            self.dismiss(None)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Filter options as the input changes."""
@@ -336,6 +361,13 @@ class OptionPickerDialog(ModalScreen[str | None]):
     #picker-options {
         height: 1fr;
     }
+
+    #picker-actions {
+        width: 100%;
+        height: auto;
+        align: right middle;
+        margin-top: 1;
+    }
     """
 
     BINDINGS = [
@@ -354,12 +386,18 @@ class OptionPickerDialog(ModalScreen[str | None]):
             yield Input(placeholder=self._placeholder, id="picker-input")
             options = [Option(self._format_option(item), id=item.id) for item in self._options]
             yield OptionList(*options, id="picker-options")
+            with Horizontal(id="picker-actions"):
+                yield Button("Back", id="picker-cancel")
 
     def on_mount(self) -> None:
         self.query_one("#picker-input", Input).focus()
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "picker-cancel":
+            self.dismiss(None)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id != "picker-input":

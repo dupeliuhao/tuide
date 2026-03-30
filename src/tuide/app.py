@@ -57,7 +57,7 @@ class TuideApp(App[None]):
 
     .menu-button {
         margin-right: 0;
-        min-width: 6;
+        min-width: 4;
         background: #111a22;
         border: tall #223240;
         color: #dce7ef;
