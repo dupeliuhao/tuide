@@ -47,7 +47,6 @@ class EditorPanel(Vertical):
 
     def compose(self):
         yield Label("Editor", classes="panel-title")
-        yield Label("Open a file from the workspace tree.", classes="panel-subtitle", id="editor-subtitle")
         with TabbedContent(id="editor-tabs"):
             with TabPane("Welcome", id="welcome-tab"):
                 yield Label(
@@ -86,8 +85,6 @@ class EditorPanel(Vertical):
             self.documents[pane_id] = OpenDocument(path=path, pane_id=pane_id)
         tabbed.active = pane_id
 
-        subtitle = self.query_one("#editor-subtitle", Label)
-        subtitle.update(str(path))
         editor = self.active_text_area
         if editor is not None:
             editor.focus()
@@ -169,9 +166,6 @@ class EditorPanel(Vertical):
         await self.tabbed_content.remove_pane(document.pane_id)
         self.documents.pop(document.pane_id, None)
 
-        subtitle = self.query_one("#editor-subtitle", Label)
-        next_document = self.active_document
-        subtitle.update(str(next_document.path) if next_document else "Open a file from the workspace tree.")
         return document.path
 
     async def open_readonly_tab(self, title: str, text: str, *, language: str | None = None) -> str:
@@ -188,8 +182,6 @@ class EditorPanel(Vertical):
             await tabbed.add_pane(pane)
         tabbed.active = pane_id
 
-        subtitle = self.query_one("#editor-subtitle", Label)
-        subtitle.update(title)
         return pane_id
 
     async def open_result_tab(self, title: str, text: str) -> str:
@@ -202,8 +194,6 @@ class EditorPanel(Vertical):
             pane = TabPane(title, Static(text, classes="panel-body"), id=pane_id)
             await tabbed.add_pane(pane)
         tabbed.active = pane_id
-        subtitle = self.query_one("#editor-subtitle", Label)
-        subtitle.update(title)
         return pane_id
 
     async def open_diff_tab(
@@ -223,8 +213,6 @@ class EditorPanel(Vertical):
             pane = TabPane(title, DiffView(left_title, left_text, right_title, right_text), id=pane_id)
             await tabbed.add_pane(pane)
         tabbed.active = pane_id
-        subtitle = self.query_one("#editor-subtitle", Label)
-        subtitle.update(title)
         return pane_id
 
     def has_unsaved_changes(self) -> bool:

@@ -30,7 +30,6 @@ class TerminalPanel(Vertical):
 
     def compose(self):
         yield Label("Terminal", classes="panel-title")
-        yield Label(self.shell_hint, classes="panel-subtitle", id="terminal-subtitle")
         fallback = self._build_terminal_widget()
         if fallback is not None:
             self._fallback = fallback

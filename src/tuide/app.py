@@ -136,13 +136,6 @@ class TuideApp(App[None]):
         color: #ced9e0;
     }
 
-    .panel-subtitle {
-        color: #8ea1b1;
-        height: 1;
-        padding: 0 1;
-        display: none;
-    }
-
     .workspace-summary {
         background: #0d141b;
         border: round #1b2a37;
@@ -172,13 +165,6 @@ class TuideApp(App[None]):
         border-top: none;
         padding-top: 0;
         margin: 0;
-    }
-
-    #editor-subtitle {
-        color: #9ab0bf;
-        padding: 0 1;
-        height: 1;
-        display: none;
     }
 
     #welcome-copy,

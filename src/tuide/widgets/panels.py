@@ -39,11 +39,7 @@ class WorkspacePanel(PanelFrame):
         return self.workspace_state.roots[0]
 
     def compose(self):
-        root_label = self.primary_root.name or str(self.primary_root)
-        title = f"Workspace ({len(self.workspace_state.roots)})"
-        subtitle = f"Active root: {root_label}"
-        yield Label(title, classes="panel-title")
-        yield Label(subtitle, classes="panel-subtitle")
+        yield Label(f"Workspace ({len(self.workspace_state.roots)})", classes="panel-title")
         root_summary = "\n".join(f"- {root}" for root in self.workspace_state.roots[:5])
         yield Static(root_summary, classes="workspace-summary", id="workspace-roots")
         yield Select(
@@ -63,9 +59,6 @@ class WorkspacePanel(PanelFrame):
         """Switch the active root shown by the tree."""
         tree = self.query_one("#workspace-tree", DirectoryTree)
         tree.path = root
-        subtitle = self.query_one(".panel-subtitle", Label)
-        subtitle.update(f"Active root: {root.name or root}")
-
         select = self.query_one("#workspace-root-select", Select)
         select.value = str(root)
 
