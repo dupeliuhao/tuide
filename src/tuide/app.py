@@ -45,12 +45,12 @@ class TuideApp(App[None]):
 
     #root {
         height: 1fr;
-        padding: 0 1 1 1;
+        padding: 0;
     }
 
     .menu-bar {
         height: auto;
-        padding: 1 0 1 0;
+        padding: 0 0 1 0;
         background: transparent;
         dock: top;
     }
@@ -59,11 +59,11 @@ class TuideApp(App[None]):
         color: #7f95aa;
         text-style: bold;
         margin: 0 1 0 0;
-        padding: 1 0 0 0;
+        padding: 0 0 0 0;
     }
 
     .menu-button {
-        margin-right: 1;
+        margin-right: 0;
         min-width: 10;
         background: #111a22;
         border: tall #223240;
@@ -82,13 +82,13 @@ class TuideApp(App[None]):
 
     #main-layout {
         height: 1fr;
-        padding-top: 1;
+        padding-top: 0;
     }
 
     .panel-frame {
         border: round #243748;
         background: #10171e;
-        padding: 0 1 1 1;
+        padding: 0 0 0 0;
         min-width: 24;
     }
 
@@ -117,7 +117,7 @@ class TuideApp(App[None]):
 
     #editor-panel {
         width: 1fr;
-        margin: 0 1;
+        margin: 0;
     }
 
     #terminal-panel {
@@ -127,18 +127,17 @@ class TuideApp(App[None]):
     .panel-title {
         text-style: bold;
         color: #f2c66a;
-        padding-top: 1;
-        padding-bottom: 1;
+        padding: 0 1;
     }
 
     .panel-body {
-        padding: 1 0 1 0;
+        padding: 0 1;
         color: #ced9e0;
     }
 
     .panel-subtitle {
         color: #8ea1b1;
-        padding-bottom: 1;
+        padding: 0 1;
     }
 
     .workspace-summary {
@@ -146,37 +145,39 @@ class TuideApp(App[None]):
         border: round #1b2a37;
         color: #b8c7d3;
         height: auto;
-        padding: 1;
-        margin-bottom: 1;
+        padding: 0 1;
+        margin: 0 1 1 1;
     }
 
     #workspace-root-select {
-        margin-bottom: 1;
+        margin: 0 1 1 1;
     }
 
     #workspace-tree {
         height: 1fr;
         background: #0d141b;
         border: round #1b2a37;
-        padding: 0 1;
+        padding: 0;
+        margin: 0 1 1 1;
     }
 
     #editor-tabs {
         height: 1fr;
         background: transparent;
         border-top: solid #1f2d38;
-        padding-top: 1;
+        padding-top: 0;
+        margin: 0 1 1 1;
     }
 
     #editor-subtitle {
         color: #9ab0bf;
-        padding-bottom: 1;
+        padding: 0 1;
     }
 
     #welcome-copy,
     .editor-welcome {
         color: #ced9e0;
-        padding: 2 1;
+        padding: 1 1;
         background: #0d141b;
         border: round #1b2a37;
         width: 1fr;
@@ -195,8 +196,8 @@ class TuideApp(App[None]):
         background: #0d141b;
         border: round #1b2a37;
         color: #ced9e0;
-        padding: 2 1;
-        margin-top: 1;
+        padding: 1 1;
+        margin: 0 1 1 1;
     }
 
     #status-bar {
