@@ -9,6 +9,7 @@ from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen
 from textual.widgets import Button, DirectoryTree, Footer, Select, Static, TabbedContent, TextArea
 
 from tuide.models import CapabilityStatus, ChoiceItem, CommandItem
@@ -340,6 +341,8 @@ class TuideApp(App[None]):
     async def handle_button_press(self, event: Button.Pressed) -> None:
         """Route menu-bar button clicks to actions."""
         button_id = event.button.id
+        if button_id is None or not button_id.startswith("menu-"):
+            return
         if button_id == "menu-add-root":
             await self.action_add_workspace_root()
         elif button_id == "menu-remove-root":
@@ -456,6 +459,9 @@ class TuideApp(App[None]):
 
     def action_escape_focus(self) -> None:
         """Return focus to the editor when no modal is active."""
+        if isinstance(self.screen, ModalScreen):
+            self.pop_screen()
+            return
         self.query_one(EditorPanel).focus()
 
     def action_show_help(self) -> None:
