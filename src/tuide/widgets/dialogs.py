@@ -13,8 +13,8 @@ from textual.widgets.option_list import Option
 from tuide.models import ChoiceItem, CommandItem
 
 
-class DismissibleModal(ModalScreen):
-    """Modal base class that always lets Escape back out."""
+class EscapeDismissMixin:
+    """Mixin that makes Escape dismiss the active modal."""
 
     def on_key(self, event: Key) -> None:
         if event.key == "escape":
@@ -22,7 +22,7 @@ class DismissibleModal(ModalScreen):
             event.stop()
 
 
-class ConfirmDialog(DismissibleModal[bool | None]):
+class ConfirmDialog(EscapeDismissMixin, ModalScreen[bool | None]):
     """A simple confirm / cancel dialog."""
 
     CSS = """
@@ -113,7 +113,7 @@ class ConfirmDialog(DismissibleModal[bool | None]):
         self.dismiss(None)
 
 
-class HelpDialog(DismissibleModal[None]):
+class HelpDialog(EscapeDismissMixin, ModalScreen[None]):
     """A lightweight keybinding help overlay."""
 
     CSS = """
@@ -180,7 +180,7 @@ class HelpDialog(DismissibleModal[None]):
             self.dismiss(None)
 
 
-class PromptDialog(DismissibleModal[str | None]):
+class PromptDialog(EscapeDismissMixin, ModalScreen[str | None]):
     """Prompt for a single text value."""
 
     CSS = """
@@ -254,7 +254,7 @@ class PromptDialog(DismissibleModal[str | None]):
         self.dismiss(None)
 
 
-class CommandPaletteDialog(DismissibleModal[str | None]):
+class CommandPaletteDialog(EscapeDismissMixin, ModalScreen[str | None]):
     """Searchable command palette."""
 
     CSS = """
@@ -342,7 +342,7 @@ class CommandPaletteDialog(DismissibleModal[str | None]):
         self.dismiss(event.option_id)
 
 
-class OptionPickerDialog(DismissibleModal[str | None]):
+class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
     """Pick from a list of options with lightweight filtering."""
 
     CSS = """
