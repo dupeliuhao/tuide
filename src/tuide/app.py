@@ -9,7 +9,7 @@ from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, DirectoryTree, Footer, Header, Select, Static, TabbedContent, TextArea
+from textual.widgets import Button, DirectoryTree, Footer, Select, Static, TabbedContent, TextArea
 
 from tuide.models import CapabilityStatus, ChoiceItem, CommandItem
 from tuide.models import AppConfig
@@ -251,7 +251,6 @@ class TuideApp(App[None]):
 
     def compose(self) -> ComposeResult:
         """Compose the app shell."""
-        yield Header(show_clock=False)
         with Vertical(id="root"):
             yield MenuBar()
             with Horizontal(id="main-layout"):
