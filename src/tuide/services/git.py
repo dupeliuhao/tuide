@@ -76,6 +76,29 @@ class GitService:
             return []
         return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
+    def list_all_branches(self, repo_root: Path) -> list[str]:
+        """List local and remote branches for a repository."""
+        result = self._run(
+            repo_root,
+            ["branch", "--all", "--format=%(refname:short)"],
+        )
+        if result is None:
+            return []
+
+        branches: list[str] = []
+        seen: set[str] = set()
+        for raw_line in result.stdout.splitlines():
+            branch = raw_line.strip()
+            if not branch or "HEAD ->" in branch:
+                continue
+            if branch.startswith("remotes/"):
+                branch = branch.removeprefix("remotes/")
+            if branch in seen:
+                continue
+            seen.add(branch)
+            branches.append(branch)
+        return branches
+
     def relative_path(self, repo_root: Path, path: Path) -> str:
         """Return repo-relative POSIX path."""
         return path.relative_to(repo_root).as_posix()
@@ -170,7 +193,17 @@ class GitService:
 
     def checkout_branch(self, repo_root: Path, branch: str) -> tuple[bool, str]:
         """Switch the repository to another branch."""
-        return self._run_with_error(repo_root, ["checkout", branch])
+        local_branches = set(self.list_branches(repo_root))
+        if branch in local_branches:
+            return self._run_with_error(repo_root, ["switch", branch])
+
+        if "/" in branch and not branch.startswith("HEAD"):
+            local_name = branch.split("/", 1)[1]
+            if local_name in local_branches:
+                return self._run_with_error(repo_root, ["switch", local_name])
+            return self._run_with_error(repo_root, ["switch", "--track", "-c", local_name, branch])
+
+        return self._run_with_error(repo_root, ["switch", branch])
 
     def commit_all(self, repo_root: Path, message: str) -> tuple[bool, str]:
         """Stage all tracked and untracked changes, then create a commit."""
@@ -187,3 +220,7 @@ class GitService:
     def push(self, repo_root: Path) -> tuple[bool, str]:
         """Push the current branch to its configured upstream."""
         return self._run_with_error(repo_root, ["push"])
+
+    def fetch(self, repo_root: Path) -> tuple[bool, str]:
+        """Fetch remote updates without merging."""
+        return self._run_with_error(repo_root, ["fetch", "--all", "--prune"])

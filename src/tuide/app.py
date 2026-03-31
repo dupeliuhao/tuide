@@ -743,19 +743,9 @@ class TuideApp(App[None]):
                 f"Git - {repo_root.name} ({branch})",
                 [
                     ChoiceItem(
-                        id="git.session.status",
-                        label="Status",
-                        description="Show branch and working tree changes",
-                    ),
-                    ChoiceItem(
                         id="git.session.pull",
                         label="Update Project",
                         description="Pull latest changes with ff-only",
-                    ),
-                    ChoiceItem(
-                        id="git.session.branch",
-                        label="Switch Branch",
-                        description="Checkout another local branch",
                     ),
                     ChoiceItem(
                         id="git.session.commit",
@@ -766,6 +756,21 @@ class TuideApp(App[None]):
                         id="git.session.push",
                         label="Push",
                         description="Push current branch to upstream",
+                    ),
+                    ChoiceItem(
+                        id="git.session.branch",
+                        label="Select Branch",
+                        description="Browse local and remote branches",
+                    ),
+                    ChoiceItem(
+                        id="git.session.fetch",
+                        label="Fetch",
+                        description="Refresh remote branches without merging",
+                    ),
+                    ChoiceItem(
+                        id="git.session.status",
+                        label="Status",
+                        description="Show branch and working tree changes",
                     ),
                 ],
                 placeholder="Filter git actions",
@@ -788,15 +793,29 @@ class TuideApp(App[None]):
             self.notify("Project updated" if success else "Git pull failed", severity="information" if success else "error")
             return
 
+        if action_id == "git.session.fetch":
+            success, output = self.git_service.fetch(repo_root)
+            await self.open_git_output_tab("git:fetch", repo_root, output)
+            self.notify("Fetch completed" if success else "Fetch failed", severity="information" if success else "error")
+            return
+
         if action_id == "git.session.branch":
-            branches = self.git_service.list_branches(repo_root)
+            branches = self.git_service.list_all_branches(repo_root)
             if not branches:
                 self.notify("No branches available", severity="warning")
                 return
+            current_branch = self.git_service.current_branch(repo_root) or "detached"
             selected_branch = await self.wait_for_screen_result(
                 OptionPickerDialog(
                     "Switch branch",
-                    [ChoiceItem(id=name, label=name) for name in branches],
+                    [
+                        ChoiceItem(
+                            id=name,
+                            label=name,
+                            description="current" if name == current_branch else "",
+                        )
+                        for name in branches
+                    ],
                     placeholder="Filter branches",
                 )
             )
