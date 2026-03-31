@@ -46,7 +46,6 @@ class EditorPanel(Vertical):
         self.documents: dict[str, OpenDocument] = {}
 
     def compose(self):
-        yield Label("Editor", classes="panel-title")
         with TabbedContent(id="editor-tabs"):
             with TabPane("Welcome", id="welcome-tab"):
                 yield Label(
