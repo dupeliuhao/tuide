@@ -352,7 +352,8 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
 
     #picker-dialog {
         width: 84;
-        height: 26;
+        height: auto;
+        max-height: 85%;
         border: round #d7a84a;
         background: #17212b;
         padding: 1 2;
@@ -369,7 +370,8 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
     }
 
     #picker-options {
-        height: 1fr;
+        height: 12;
+        min-height: 8;
     }
 
     #picker-actions {
@@ -401,6 +403,9 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
 
     def on_mount(self) -> None:
         self.query_one("#picker-input", Input).focus()
+        option_list = self.query_one("#picker-options", OptionList)
+        if option_list.option_count:
+            option_list.highlighted = 0
 
     def action_cancel(self) -> None:
         self.dismiss(None)
