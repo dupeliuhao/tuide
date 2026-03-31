@@ -364,6 +364,8 @@ class TuideApp(App[None]):
             self.run_worker(self.action_add_workspace_root(), exclusive=False)
         elif button_id == "menu-remove-root":
             self.run_worker(self.action_remove_workspace_root(), exclusive=False)
+        elif button_id == "menu-git-session":
+            self.run_worker(self.action_git_session(), exclusive=False)
         elif button_id == "menu-quick-open":
             self.run_worker(self.action_quick_open(), exclusive=False)
         elif button_id == "menu-find-file":
@@ -496,6 +498,7 @@ class TuideApp(App[None]):
             CommandItem("search.find_workspace", "Find in workspace", "Search text across workspace roots"),
             CommandItem("view.toggle_workspace", "Toggle workspace", "Show or hide the left panel"),
             CommandItem("view.toggle_terminal", "Toggle terminal", "Show or hide the right panel"),
+            CommandItem("git.session", "Git session", "Open project-level Git actions"),
             CommandItem("git.diff", "Git diff with branch", "Compare current file to another branch"),
             CommandItem("git.history", "Git file history", "Show history for the active file"),
             CommandItem("git.blame", "Git blame", "Show blame for the active file"),
@@ -570,6 +573,7 @@ class TuideApp(App[None]):
             "search.quick_open": self.action_quick_open,
             "search.find_file": self.action_find_in_file,
             "search.find_workspace": self.action_find_in_workspace,
+            "git.session": self.action_git_session,
             "git.diff": self.action_git_diff,
             "git.history": self.action_git_history,
             "git.blame": self.action_git_blame,
@@ -703,6 +707,129 @@ class TuideApp(App[None]):
         panel.update_workspace_state(self.workspace_state)
         await self.query_one("#workspace-tree", DirectoryTree).reload()
         self.refresh_status()
+
+    def active_repo_root(self) -> Path | None:
+        """Return the current Git repository root, preferring the active file."""
+        path = self.query_one(EditorPanel).active_path
+        if path is not None:
+            repo_root = self.git_service.repo_root_for(path)
+            if repo_root is not None:
+                return repo_root
+
+        for root in self.workspace_state.roots:
+            repo_root = self.git_service.repo_root_for(root)
+            if repo_root is not None:
+                return repo_root
+
+        self.notify("No Git repository found in the current workspace", severity="warning")
+        return None
+
+    async def open_git_output_tab(self, title: str, repo_root: Path, output: str) -> None:
+        """Open Git command output in a result tab."""
+        branch = self.git_service.current_branch(repo_root) or "detached"
+        text = f"Repo: {repo_root}\nBranch: {branch}\n\n{output}"
+        await self.query_one(EditorPanel).open_readonly_tab(title, text)
+        self.refresh_status()
+
+    async def action_git_session(self) -> None:
+        """Open project-level Git actions from the top bar."""
+        repo_root = self.active_repo_root()
+        if repo_root is None:
+            return
+
+        branch = self.git_service.current_branch(repo_root) or "detached"
+        action_id = await self.wait_for_screen_result(
+            OptionPickerDialog(
+                f"Git - {repo_root.name} ({branch})",
+                [
+                    ChoiceItem(
+                        id="git.session.status",
+                        label="Status",
+                        description="Show branch and working tree changes",
+                    ),
+                    ChoiceItem(
+                        id="git.session.pull",
+                        label="Update Project",
+                        description="Pull latest changes with ff-only",
+                    ),
+                    ChoiceItem(
+                        id="git.session.branch",
+                        label="Switch Branch",
+                        description="Checkout another local branch",
+                    ),
+                    ChoiceItem(
+                        id="git.session.commit",
+                        label="Commit",
+                        description="Stage all changes and create a commit",
+                    ),
+                    ChoiceItem(
+                        id="git.session.push",
+                        label="Push",
+                        description="Push current branch to upstream",
+                    ),
+                ],
+                placeholder="Filter git actions",
+            )
+        )
+        if action_id is None:
+            return
+
+        if action_id == "git.session.status":
+            status = self.git_service.status_summary(repo_root)
+            if status is None:
+                self.notify("Unable to read Git status", severity="error")
+                return
+            await self.open_git_output_tab("git:status", repo_root, status)
+            return
+
+        if action_id == "git.session.pull":
+            success, output = self.git_service.pull(repo_root)
+            await self.open_git_output_tab("git:update", repo_root, output)
+            self.notify("Project updated" if success else "Git pull failed", severity="information" if success else "error")
+            return
+
+        if action_id == "git.session.branch":
+            branches = self.git_service.list_branches(repo_root)
+            if not branches:
+                self.notify("No branches available", severity="warning")
+                return
+            selected_branch = await self.wait_for_screen_result(
+                OptionPickerDialog(
+                    "Switch branch",
+                    [ChoiceItem(id=name, label=name) for name in branches],
+                    placeholder="Filter branches",
+                )
+            )
+            if not selected_branch:
+                return
+            success, output = self.git_service.checkout_branch(repo_root, selected_branch)
+            await self.open_git_output_tab("git:branch", repo_root, output)
+            self.notify(
+                f"Switched to {selected_branch}" if success else "Branch switch failed",
+                severity="information" if success else "error",
+            )
+            return
+
+        if action_id == "git.session.commit":
+            message = await self.wait_for_screen_result(
+                PromptDialog("Commit changes", placeholder="commit message")
+            )
+            if not message:
+                return
+            cleaned_message = message.strip()
+            if not cleaned_message:
+                self.notify("Commit message cannot be empty", severity="warning")
+                return
+            success, output = self.git_service.commit_all(repo_root, cleaned_message)
+            await self.open_git_output_tab("git:commit", repo_root, output)
+            self.notify("Commit created" if success else "Commit failed", severity="information" if success else "error")
+            return
+
+        if action_id == "git.session.push":
+            success, output = self.git_service.push(repo_root)
+            await self.open_git_output_tab("git:push", repo_root, output)
+            self.notify("Push completed" if success else "Push failed", severity="information" if success else "error")
+            return
 
     def active_file_context(self) -> tuple[Path, Path] | None:
         """Return active file and repo root when available."""
