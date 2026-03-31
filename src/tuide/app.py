@@ -244,6 +244,7 @@ class TuideApp(App[None]):
         Binding("ctrl+alt+bracketleft", "shrink_terminal", "Narrow Right", show=False),
         Binding("ctrl+alt+bracketright", "grow_terminal", "Widen Right", show=False),
         Binding("?", "show_help", "Help"),
+        Binding("ctrl+backslash", "editor_context_menu", "Context Menu", show=False),
     ]
 
     def __init__(self) -> None:
@@ -323,6 +324,7 @@ class TuideApp(App[None]):
         self.query_one(EditorPanel).focus()
         self.refresh_status()
         self.sync_splitter_visibility()
+        self._refresh_branch_indicator()
 
     def refresh_status(self) -> None:
         """Update the status bar left text (no git subprocess)."""
@@ -334,21 +336,25 @@ class TuideApp(App[None]):
             pass
 
     def _refresh_branch_indicator(self) -> None:
-        """Re-query git for the current branch and update the indicator."""
+        """Kick off a background thread to update the branch indicator."""
         if not self.is_mounted:
             return
-        try:
-            indicator = self.query_one("#branch-indicator", Button)
-        except Exception:
-            return
-        repo_root = self._find_repo_root()
+        self.run_worker(self._fetch_branch_async(), exclusive=True, group="branch-refresh")
+
+    async def _fetch_branch_async(self) -> None:
+        """Fetch current branch in a thread and update the indicator."""
+        import asyncio
+        repo_root = await asyncio.to_thread(self._find_repo_root)
         if repo_root is None:
-            self._cached_branch = "—"
-            indicator.label = "⎇ —"
-            return
-        branch = self.git_service.current_branch(repo_root) or "detached"
-        self._cached_branch = branch
-        indicator.label = f"⎇ {branch}"
+            label = "⎇ —"
+        else:
+            branch = await asyncio.to_thread(self.git_service.current_branch, repo_root)
+            label = f"⎇ {branch or 'detached'}"
+        self._cached_branch = label.removeprefix("⎇ ")
+        try:
+            self.query_one("#branch-indicator", Button).label = label
+        except Exception:
+            pass
 
     async def action_open_branch_picker(self) -> None:
         """Open the branch picker popup."""
@@ -503,6 +509,15 @@ class TuideApp(App[None]):
             self._show_editor_context_menu(event.screen_x, event.screen_y),
             exclusive=False,
         )
+
+    async def action_editor_context_menu(self) -> None:
+        """Open context menu at the centre of the editor (keyboard trigger)."""
+        editor = self.query_one(EditorPanel)
+        if editor.active_text_area is None:
+            self.notify("Open a file first", severity="warning")
+            return
+        r = editor.region
+        await self._show_editor_context_menu(r.x + r.width // 2, r.y + r.height // 2)
 
     async def _show_editor_context_menu(self, x: int, y: int) -> None:
         """Build and show the right-click context menu for the editor."""
