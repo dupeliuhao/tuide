@@ -489,19 +489,15 @@ class TuideApp(App[None]):
 
     def on_mouse_up(self, event) -> None:
         """Show editor context menu on right-click."""
-        if event.button != 2:
+        if event.button not in (2, 3):
             return
         if len(self.screen_stack) > 1:
             return
-        try:
-            widget, _ = self.screen.get_widget_at(event.screen_x, event.screen_y)
-        except Exception:
-            return
-        from textual.widgets import TextArea
-        if not isinstance(widget, TextArea):
-            return
         editor = self.query_one(EditorPanel)
-        if editor.active_text_area is not widget:
+        if editor.active_text_area is None:
+            return
+        # Only trigger when the click is within the editor panel region
+        if not editor.region.contains(event.screen_x, event.screen_y):
             return
         self.run_worker(
             self._show_editor_context_menu(event.screen_x, event.screen_y),
