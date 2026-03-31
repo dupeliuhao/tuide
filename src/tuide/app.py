@@ -307,6 +307,25 @@ class TuideApp(App[None]):
         status = self.query_one("#status-bar", Static)
         status.update(self.build_status_text())
 
+    def show_confirm_dialog(
+        self,
+        title: str,
+        message: str,
+        *,
+        confirm_label: str,
+        on_confirm,
+    ) -> None:
+        """Show a confirm dialog and run a callback only when confirmed."""
+
+        def _resolve(result: object | None) -> None:
+            if result:
+                on_confirm()
+
+        self.push_screen(
+            ConfirmDialog(title, message, confirm_label=confirm_label),
+            callback=_resolve,
+        )
+
     async def wait_for_screen_result(self, screen) -> object | None:
         """Push a screen and wait for its dismissal result without requiring a worker."""
         loop = asyncio.get_running_loop()
@@ -439,17 +458,19 @@ class TuideApp(App[None]):
             return
 
         if active_document.dirty:
-            confirmed = await self.wait_for_screen_result(
-                ConfirmDialog(
-                    "Unsaved changes",
-                    f"{active_document.path.name} has unsaved changes. Close it anyway?",
-                    confirm_label="Close Tab",
-                )
+            self.show_confirm_dialog(
+                "Unsaved changes",
+                f"{active_document.path.name} has unsaved changes. Close it anyway?",
+                confirm_label="Close Tab",
+                on_confirm=lambda: self.run_worker(self._close_active_tab_after_confirm(), exclusive=False),
             )
-            if not confirmed:
-                return
+            return
 
-        closed = await editor.close_active_tab()
+        await self._close_active_tab_after_confirm()
+
+    async def _close_active_tab_after_confirm(self) -> None:
+        """Close the active tab after confirmation has been resolved."""
+        closed = await self.query_one(EditorPanel).close_active_tab()
         if closed is not None:
             self.notify(f"Closed {closed.name}")
         self.refresh_status()
@@ -459,16 +480,13 @@ class TuideApp(App[None]):
         editor = self.query_one(EditorPanel)
         dirty_count = editor.dirty_count
         if dirty_count:
-            confirmed = await self.wait_for_screen_result(
-                ConfirmDialog(
-                    "Unsaved changes",
-                    f"You have {dirty_count} unsaved file{'s' if dirty_count != 1 else ''}. Quit anyway?",
-                    confirm_label="Quit",
-                )
+            self.show_confirm_dialog(
+                "Unsaved changes",
+                f"You have {dirty_count} unsaved file{'s' if dirty_count != 1 else ''}. Quit anyway?",
+                confirm_label="Quit",
+                on_confirm=lambda: self.call_after_refresh(self.exit),
             )
-            if not confirmed:
-                return
-        # Defer exit until the confirm screen has fully unwound.
+            return
         self.call_after_refresh(self.exit)
 
     def action_restart_terminal(self) -> None:
