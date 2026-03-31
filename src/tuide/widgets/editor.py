@@ -85,16 +85,26 @@ def build_editor_theme() -> TextAreaTheme:
 
 def build_code_editor(text: str, path: Path, pane_id: str) -> TextArea:
     """Create a configured editor instance for a file."""
-    editor = TextArea.code_editor(
+    editor = TextArea(
         text=text,
         language=detect_language(path),
         id=f"editor-{pane_id}",
-        theme="vscode_dark",
+        soft_wrap=False,
+        tab_behavior="indent",
     )
-    editor.register_theme(build_editor_theme())
-    editor.theme = "tuide_code"
-    editor.match_cursor_bracket = True
-    editor.cursor_blink = False
+    try:
+        editor.register_theme(build_editor_theme())
+        editor.theme = "tuide_code"
+    except Exception:
+        pass
+    try:
+        editor.match_cursor_bracket = True
+    except Exception:
+        pass
+    try:
+        editor.cursor_blink = False
+    except Exception:
+        pass
     editor.show_line_numbers = True
     return editor
 
