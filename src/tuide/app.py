@@ -10,7 +10,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, DirectoryTree, Footer, Select, Static, TabbedContent, TextArea
+from textual.widgets import Button, DirectoryTree, Footer, Input, Select, Static, TabbedContent, TextArea
 
 from tuide.models import CapabilityStatus, ChoiceItem, CommandItem
 from tuide.models import AppConfig
@@ -58,9 +58,10 @@ class TuideApp(App[None]):
 
     .menu-button {
         margin-right: 0;
-        min-width: 4;
+        min-width: 2;
+        min-height: 1;
         height: 1;
-        padding: 0 1;
+        padding: 0;
         background: #111a22;
         border: none;
         color: #dce7ef;
@@ -341,7 +342,23 @@ class TuideApp(App[None]):
     def handle_button_press(self, event: Button.Pressed) -> None:
         """Route menu-bar button clicks to actions."""
         button_id = event.button.id
-        if button_id is None or not button_id.startswith("menu-"):
+        if button_id is None:
+            return
+
+        if len(self.screen_stack) > 1:
+            top_screen = self.screen_stack[-1]
+            if button_id in {"confirm-cancel", "prompt-cancel", "palette-cancel", "picker-cancel", "help-close"}:
+                top_screen.dismiss(None)
+                return
+            if button_id == "confirm-ok":
+                top_screen.dismiss(True)
+                return
+            if button_id == "prompt-ok":
+                prompt_input = top_screen.query_one("#prompt-input", Input)
+                top_screen.dismiss(prompt_input.value)
+                return
+
+        if not button_id.startswith("menu-"):
             return
         if button_id == "menu-add-root":
             self.run_worker(self.action_add_workspace_root(), exclusive=False)
@@ -461,7 +478,7 @@ class TuideApp(App[None]):
     def action_escape_focus(self) -> None:
         """Return focus to the editor when no modal is active."""
         if len(self.screen_stack) > 1:
-            self.pop_screen()
+            self.screen_stack[-1].dismiss(None)
             return
         self.query_one(EditorPanel).focus()
 
