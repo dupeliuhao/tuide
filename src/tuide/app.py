@@ -269,6 +269,7 @@ class TuideApp(App[None]):
             git="ready" if self.git_service.is_available() else "missing-git",
             lsp=self.lsp_service.status_label(),
         )
+        self._cached_branch: str = "—"
 
     def compose(self) -> ComposeResult:
         """Compose the app shell."""
@@ -297,25 +298,21 @@ class TuideApp(App[None]):
         return type(workspace)(roots=[Path.cwd()])
 
     def build_status_text(self) -> str:
-        """Return the first-pass status bar content."""
-        root_count = len(self.workspace_state.roots)
-        root_text = f"{root_count} workspace root{'s' if root_count != 1 else ''}"
+        """Return the status bar left content."""
         editor_panel = None
         if self.is_mounted:
             try:
                 editor_panel = self.query_one(EditorPanel)
             except Exception:
-                editor_panel = None
+                pass
         document = editor_panel.active_document if editor_panel is not None else None
         cursor = editor_panel.active_cursor() if editor_panel is not None else None
         file_text = document.path.name if document is not None else "no file"
-        dirty_text = "edited" if document and document.dirty else "clean"
+        dirty_text = " ●" if document and document.dirty else ""
         cursor_text = f"ln {cursor[0]}, col {cursor[1]}" if cursor is not None else "ln -, col -"
-        return (
-            f"{file_text} | {cursor_text} | {dirty_text} | {root_text} | {self.platform.system.lower()} | "
-            f"terminal {self.capabilities.terminal} | git {self.capabilities.git} | "
-            f"lsp {self.capabilities.lsp}"
-        )
+        root_count = len(self.workspace_state.roots)
+        root_text = f"{root_count} root{'s' if root_count != 1 else ''}"
+        return f"{file_text}{dirty_text}  {cursor_text}  {root_text}"
 
     def on_mount(self) -> None:
         """Set initial focus and title."""
@@ -327,37 +324,34 @@ class TuideApp(App[None]):
         self.sync_splitter_visibility()
 
     def refresh_status(self) -> None:
-        """Update the status bar."""
-        self.query_one("#status-left", Static).update(self.build_status_text())
-        self._refresh_branch_indicator()
+        """Update the status bar left text (no git subprocess)."""
+        if not self.is_mounted:
+            return
+        try:
+            self.query_one("#status-left", Static).update(self.build_status_text())
+        except Exception:
+            pass
 
     def _refresh_branch_indicator(self) -> None:
-        """Update the branch indicator label."""
+        """Re-query git for the current branch and update the indicator."""
         if not self.is_mounted:
             return
         try:
             indicator = self.query_one("#branch-indicator", Button)
         except Exception:
             return
-        repo_root = self._current_repo_root()
+        repo_root = self._find_repo_root()
         if repo_root is None:
+            self._cached_branch = "—"
             indicator.label = "⎇ —"
             return
         branch = self.git_service.current_branch(repo_root) or "detached"
+        self._cached_branch = branch
         indicator.label = f"⎇ {branch}"
-
-    def _current_repo_root(self) -> Path | None:
-        """Return the repo root for the active file or primary workspace root."""
-        try:
-            editor = self.query_one(EditorPanel)
-        except Exception:
-            return None
-        path = editor.active_path or self.workspace_state.roots[0]
-        return self.git_service.repo_root_for(path)
 
     async def action_open_branch_picker(self) -> None:
         """Open the branch picker popup."""
-        repo_root = self._current_repo_root()
+        repo_root = self._find_repo_root()
         if repo_root is None:
             self.notify("No git repository found", severity="warning")
             return
@@ -488,8 +482,9 @@ class TuideApp(App[None]):
 
     @on(TabbedContent.TabActivated)
     def sync_tab_status(self) -> None:
-        """Refresh status when the active editor tab changes."""
+        """Refresh status and branch when the active editor tab changes."""
         self.refresh_status()
+        self._refresh_branch_indicator()
 
     def action_focus_next(self) -> None:
         """Cycle focus forward across main panels."""
@@ -804,21 +799,28 @@ class TuideApp(App[None]):
         await self.query_one("#workspace-tree", DirectoryTree).reload()
         self.refresh_status()
 
-    def active_repo_root(self) -> Path | None:
-        """Return the current Git repository root, preferring the active file."""
-        path = self.query_one(EditorPanel).active_path
+    def _find_repo_root(self) -> Path | None:
+        """Return the current Git repo root without side effects."""
+        try:
+            path = self.query_one(EditorPanel).active_path
+        except Exception:
+            path = None
         if path is not None:
             repo_root = self.git_service.repo_root_for(path)
             if repo_root is not None:
                 return repo_root
-
         for root in self.workspace_state.roots:
             repo_root = self.git_service.repo_root_for(root)
             if repo_root is not None:
                 return repo_root
-
-        self.notify("No Git repository found in the current workspace", severity="warning")
         return None
+
+    def active_repo_root(self) -> Path | None:
+        """Return the current Git repository root, notifying on failure."""
+        repo_root = self._find_repo_root()
+        if repo_root is None:
+            self.notify("No Git repository found in the current workspace", severity="warning")
+        return repo_root
 
     async def open_git_output_tab(self, title: str, repo_root: Path, output: str) -> None:
         """Open Git command output in a result tab."""
@@ -1051,8 +1053,10 @@ class TuideApp(App[None]):
         if context is None:
             return
         path, repo_root = context
+        cursor = self.query_one(EditorPanel).active_cursor()
+        prefill = f"{cursor[0]}:{cursor[0]}" if cursor else ""
         value = await self.wait_for_screen_result(
-            PromptDialog("Line history", placeholder="start:end, e.g. 10:20")
+            PromptDialog("Line history", placeholder="start:end, e.g. 10:20", value=prefill)
         )
         if not value:
             return

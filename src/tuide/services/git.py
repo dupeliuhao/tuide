@@ -206,8 +206,8 @@ class GitService:
         return self._run_with_error(repo_root, ["switch", branch])
 
     def commit_all(self, repo_root: Path, message: str) -> tuple[bool, str]:
-        """Stage all tracked and untracked changes, then create a commit."""
-        staged_ok, staged_output = self._run_with_error(repo_root, ["add", "-A"])
+        """Stage all tracked changes and create a commit."""
+        staged_ok, staged_output = self._run_with_error(repo_root, ["add", "-u"])
         if not staged_ok:
             return False, staged_output
         commit_ok, commit_output = self._run_with_error(repo_root, ["commit", "-m", message])
