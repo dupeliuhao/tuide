@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
+from rich.style import Style
 from textual import on
 from textual.containers import Vertical
 from textual.widgets import Label, Static, TabPane, TabbedContent, TextArea
+from textual.widgets.text_area import TextAreaTheme
 
 from tuide.models import OpenDocument
 from tuide.widgets.diffview import DiffView
@@ -33,6 +36,67 @@ def detect_language(path: Path) -> str | None:
         ".sbt": None,
     }
     return mapping.get(suffix)
+
+
+def build_editor_theme() -> TextAreaTheme:
+    """Build the default code-editor theme for tuide."""
+    base = TextAreaTheme.get_builtin_theme("vscode_dark")
+    if base is None:
+        return TextAreaTheme(
+            name="tuide_code",
+            syntax_styles={
+                "keyword": Style(color="#f7c96a", bold=True),
+                "string": Style(color="#98c379"),
+                "comment": Style(color="#6a9955", italic=True),
+                "function": Style(color="#61afef"),
+                "type": Style(color="#e5c07b", bold=True),
+                "number": Style(color="#d19a66"),
+            },
+        )
+
+    syntax_styles = dict(base.syntax_styles)
+    syntax_styles.update(
+        {
+            "keyword": Style(color="#f7c96a", bold=True),
+            "keyword.function": Style(color="#f7c96a", bold=True),
+            "string": Style(color="#98c379"),
+            "comment": Style(color="#6a9955", italic=True),
+            "function": Style(color="#61afef", bold=True),
+            "function.method": Style(color="#7ec7ff"),
+            "function.builtin": Style(color="#56b6c2"),
+            "type": Style(color="#e5c07b", bold=True),
+            "type.builtin": Style(color="#e5c07b", bold=True),
+            "constructor": Style(color="#d19a66", bold=True),
+            "number": Style(color="#d19a66"),
+            "operator": Style(color="#c8d3df"),
+            "property": Style(color="#c678dd"),
+            "variable.parameter": Style(color="#e06c75", italic=True),
+            "variable.builtin": Style(color="#56b6c2"),
+        }
+    )
+    return replace(
+        base,
+        name="tuide_code",
+        cursor_line_style=Style(bgcolor="#13202b"),
+        selection_style=Style(bgcolor="#284761"),
+        syntax_styles=syntax_styles,
+    )
+
+
+def build_code_editor(text: str, path: Path, pane_id: str) -> TextArea:
+    """Create a configured editor instance for a file."""
+    editor = TextArea.code_editor(
+        text=text,
+        language=detect_language(path),
+        id=f"editor-{pane_id}",
+        theme="vscode_dark",
+    )
+    editor.register_theme(build_editor_theme())
+    editor.theme = "tuide_code"
+    editor.match_cursor_bracket = True
+    editor.cursor_blink = False
+    editor.show_line_numbers = True
+    return editor
 
 
 class EditorPanel(Vertical):
@@ -71,14 +135,7 @@ class EditorPanel(Vertical):
             tabbed.get_pane(pane_id)
         except Exception:
             content = path.read_text(encoding="utf-8", errors="replace")
-            editor = TextArea(
-                text=content,
-                language=detect_language(path),
-                id=f"editor-{pane_id}",
-                soft_wrap=False,
-                tab_behavior="indent",
-            )
-            editor.show_line_numbers = True
+            editor = build_code_editor(content, path, pane_id)
             pane = TabPane(path.name, editor, id=pane_id)
             await tabbed.add_pane(pane)
             self.documents[pane_id] = OpenDocument(path=path, pane_id=pane_id)
@@ -119,6 +176,12 @@ class EditorPanel(Vertical):
             return None
         row, column = editor.cursor_location
         return row + 1, column + 1
+
+    @property
+    def active_text(self) -> str | None:
+        """Return the active editor contents."""
+        editor = self.active_text_area
+        return editor.text if editor is not None else None
 
     def find_in_active_file(self, query: str) -> list[str]:
         """Return formatted matches from the active editor."""

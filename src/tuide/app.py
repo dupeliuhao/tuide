@@ -17,6 +17,7 @@ from tuide.models import AppConfig
 from tuide.services.config import ConfigStore
 from tuide.services.git import GitService
 from tuide.services.lsp import LspService
+from tuide.services.python_semantic import PythonSemanticService
 from tuide.services.search import SearchService
 from tuide.platform import PlatformInfo, detect_platform
 from tuide.services.workspace import WorkspaceStore
@@ -231,6 +232,7 @@ class TuideApp(App[None]):
         self.workspace_state = self._load_workspace_state()
         self.git_service = GitService()
         self.lsp_service = LspService()
+        self.python_semantic = PythonSemanticService()
         self.search_service = SearchService()
         self.workspace_width = self.config.workspace_width
         self.terminal_width = self.config.terminal_width
@@ -503,6 +505,8 @@ class TuideApp(App[None]):
             CommandItem("git.history", "Git file history", "Show history for the active file"),
             CommandItem("git.blame", "Git blame", "Show blame for the active file"),
             CommandItem("git.line_history", "Git line history", "Show history for a chosen line range"),
+            CommandItem("python.outline", "Python outline", "Show function, class, and usage summary for the active file"),
+            CommandItem("python.symbol", "Python symbol details", "Show definitions and usages for the symbol at the cursor"),
             CommandItem("code.definition", "Go to definition", "Run code-intelligence definition action"),
             CommandItem("code.references", "Find references", "Run code-intelligence references action"),
             CommandItem("terminal.restart", "Restart terminal", "Restart the embedded terminal session"),
@@ -547,6 +551,8 @@ class TuideApp(App[None]):
                 ChoiceItem("git.history", "Git file history"),
                 ChoiceItem("git.blame", "Git blame"),
                 ChoiceItem("git.line_history", "Git line history"),
+                ChoiceItem("python.outline", "Python outline"),
+                ChoiceItem("python.symbol", "Python symbol details"),
                 ChoiceItem("code.definition", "Go to definition"),
                 ChoiceItem("code.references", "Find references"),
             ]
@@ -578,6 +584,8 @@ class TuideApp(App[None]):
             "git.history": self.action_git_history,
             "git.blame": self.action_git_blame,
             "git.line_history": self.action_git_line_history,
+            "python.outline": self.action_python_outline,
+            "python.symbol": self.action_python_symbol_details,
             "code.definition": self.action_code_goto_definition,
             "code.references": self.action_code_find_references,
             "terminal.restart": self._run_restart_terminal,
@@ -979,6 +987,35 @@ class TuideApp(App[None]):
             f"line-history:{path.name}:{start_line}-{end_line}",
             history,
         )
+
+    async def action_python_outline(self) -> None:
+        """Show semantic structure for the active Python file."""
+        editor = self.query_one(EditorPanel)
+        path = editor.active_path
+        text = editor.active_text
+        if path is None or text is None:
+            self.notify("Open a Python file first", severity="warning")
+            return
+        if not self.python_semantic.available_for(path):
+            self.notify("Semantic outline currently supports Python files", severity="warning")
+            return
+        report = self.python_semantic.build_outline(path, text)
+        await editor.open_readonly_tab(f"python-outline:{path.name}", report)
+
+    async def action_python_symbol_details(self) -> None:
+        """Show definitions and usages for the symbol under the cursor."""
+        editor = self.query_one(EditorPanel)
+        path = editor.active_path
+        text = editor.active_text
+        cursor = editor.active_cursor()
+        if path is None or text is None or cursor is None:
+            self.notify("Open a Python file first", severity="warning")
+            return
+        if not self.python_semantic.available_for(path):
+            self.notify("Symbol details currently support Python files", severity="warning")
+            return
+        report = self.python_semantic.symbol_report(path, text, cursor[0], cursor[1])
+        await editor.open_readonly_tab(f"python-symbol:{path.name}", report)
 
     async def action_code_goto_definition(self) -> None:
         """Perform the current definition action with LSP/AI fallback."""
