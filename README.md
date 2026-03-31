@@ -93,6 +93,9 @@ pip install -e .[linux]
 `tuide` currently expects a Textual version that stays compatible with `textual-terminal`.
 The project now pins `textual` to a compatible range in `pyproject.toml`, so a fresh install
 should give you a real embedded shell on Linux.
+The project also now installs `textual[syntax]`, which is required for `TextArea` syntax
+highlighting. If Python files still look plain after pulling, refresh the environment so the
+syntax extras are installed.
 
 If `textual-terminal` fails to install for any reason, you can still test the app shell without the embedded terminal:
 
@@ -104,6 +107,12 @@ If you installed the project before this pin was added, refresh the environment 
 
 ```bash
 pip install --upgrade --force-reinstall -e .[linux]
+```
+
+If highlighting still does not appear, run this once inside the activated environment:
+
+```bash
+pip install --upgrade --force-reinstall "textual[syntax]>=0.58.0,<0.59.0"
 ```
 
 If `textual-terminal` still ends up incompatible with your local environment, `tuide` will fall back to a placeholder instead of crashing on startup.
