@@ -77,8 +77,8 @@ def build_editor_theme() -> TextAreaTheme:
     return replace(
         base,
         name="tuide_code",
-        cursor_line_style=Style(bgcolor="#13202b"),
-        selection_style=Style(bgcolor="#284761"),
+        cursor_line_style=Style(bgcolor="#161b22"),
+        selection_style=Style(bgcolor="#1d3557"),
         syntax_styles=syntax_styles,
     )
 
@@ -123,10 +123,7 @@ class EditorPanel(Vertical):
         with TabbedContent(id="editor-tabs"):
             with TabPane("Welcome", id="welcome-tab"):
                 yield Label(
-                    "tuide\n\n"
-                    "A Linux-first terminal IDE shell for workspace navigation, editing, Git workflows, "
-                    "and embedded AI tooling.\n\n"
-                    "Start by opening a file from the workspace tree on the left.",
+                    "tuide\n\nOpen a file from the workspace tree on the left.",
                     classes="editor-welcome",
                     id="welcome-copy",
                 )

@@ -31,27 +31,27 @@ class ConfirmDialog(EscapeDismissMixin, ModalScreen[bool | None]):
     }
 
     #confirm-dialog {
-        width: 60;
+        width: 56;
         height: auto;
-        border: round #d7a84a;
-        background: #17212b;
-        padding: 1 2;
+        border: solid #30363d;
+        background: #161b22;
+        padding: 0 1;
     }
 
     #confirm-title {
         text-style: bold;
-        color: #f3efe2;
-        padding-bottom: 1;
+        color: #e6edf3;
+        padding-bottom: 0;
     }
 
     #confirm-message {
-        color: #d9e2ec;
-        padding-bottom: 1;
+        color: #8b949e;
+        padding-bottom: 0;
     }
 
     #confirm-hint {
-        color: #8fa3b8;
-        padding-bottom: 1;
+        color: #6e7681;
+        padding-bottom: 0;
     }
 
     #confirm-actions {
@@ -62,6 +62,13 @@ class ConfirmDialog(EscapeDismissMixin, ModalScreen[bool | None]):
 
     #confirm-actions Button {
         margin-left: 1;
+    }
+
+    Button {
+        height: 1;
+        min-height: 1;
+        padding: 0 2;
+        border: none;
     }
     """
 
@@ -122,28 +129,35 @@ class HelpDialog(EscapeDismissMixin, ModalScreen[None]):
     }
 
     #help-dialog {
-        width: 72;
+        width: 68;
         height: auto;
         max-height: 90%;
-        border: round #d7a84a;
-        background: #17212b;
-        padding: 1 2;
+        border: solid #30363d;
+        background: #161b22;
+        padding: 0 1;
     }
 
     #help-title {
         text-style: bold;
-        color: #f3efe2;
-        padding-bottom: 1;
+        color: #e6edf3;
+        padding-bottom: 0;
     }
 
     .help-line {
-        color: #d9e2ec;
+        color: #8b949e;
     }
 
     #help-close {
-        margin-top: 1;
-        width: 16;
+        margin-top: 0;
+        width: 10;
         align-horizontal: right;
+    }
+
+    Button {
+        height: 1;
+        min-height: 1;
+        padding: 0 2;
+        border: none;
     }
     """
 
@@ -189,32 +203,39 @@ class PromptDialog(EscapeDismissMixin, ModalScreen[str | None]):
     }
 
     #prompt-dialog {
-        width: 72;
+        width: 64;
         height: auto;
-        border: round #d7a84a;
-        background: #17212b;
-        padding: 1 2;
+        border: solid #30363d;
+        background: #161b22;
+        padding: 0 1;
     }
 
     #prompt-title {
         text-style: bold;
-        color: #f3efe2;
-        padding-bottom: 1;
+        color: #e6edf3;
+        padding-bottom: 0;
     }
 
     #prompt-input {
-        margin-bottom: 1;
+        margin-bottom: 0;
     }
 
     #prompt-hint {
-        color: #8fa3b8;
-        padding-bottom: 1;
+        color: #6e7681;
+        padding-bottom: 0;
     }
 
     #prompt-actions {
         width: 100%;
         height: auto;
         align: right middle;
+    }
+
+    Button {
+        height: 1;
+        min-height: 1;
+        padding: 0 2;
+        border: none;
     }
     """
 
@@ -263,21 +284,21 @@ class CommandPaletteDialog(EscapeDismissMixin, ModalScreen[str | None]):
     }
 
     #palette-dialog {
-        width: 80;
-        height: 24;
-        border: round #d7a84a;
-        background: #17212b;
-        padding: 1 2;
+        width: 76;
+        height: 20;
+        border: solid #30363d;
+        background: #161b22;
+        padding: 0 1;
     }
 
     #palette-title {
         text-style: bold;
-        color: #f3efe2;
-        padding-bottom: 1;
+        color: #e6edf3;
+        padding-bottom: 0;
     }
 
     #palette-input {
-        margin-bottom: 1;
+        margin-bottom: 0;
     }
 
     #palette-options {
@@ -288,7 +309,14 @@ class CommandPaletteDialog(EscapeDismissMixin, ModalScreen[str | None]):
         width: 100%;
         height: auto;
         align: right middle;
-        margin-top: 1;
+        margin-top: 0;
+    }
+
+    Button {
+        height: 1;
+        min-height: 1;
+        padding: 0 2;
+        border: none;
     }
     """
 
@@ -351,34 +379,41 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
     }
 
     #picker-dialog {
-        width: 84;
+        width: 76;
         height: auto;
         max-height: 85%;
-        border: round #d7a84a;
-        background: #17212b;
-        padding: 1 2;
+        border: solid #30363d;
+        background: #161b22;
+        padding: 0 1;
     }
 
     #picker-title {
         text-style: bold;
-        color: #f3efe2;
-        padding-bottom: 1;
+        color: #e6edf3;
+        padding-bottom: 0;
     }
 
     #picker-input {
-        margin-bottom: 1;
+        margin-bottom: 0;
     }
 
     #picker-options {
-        height: 12;
-        min-height: 8;
+        height: 10;
+        min-height: 6;
     }
 
     #picker-actions {
         width: 100%;
         height: auto;
         align: right middle;
-        margin-top: 1;
+        margin-top: 0;
+    }
+
+    Button {
+        height: 1;
+        min-height: 1;
+        padding: 0 2;
+        border: none;
     }
     """
 
@@ -438,3 +473,62 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
         if item.description:
             return f"{item.label} - {item.description}"
         return item.label
+
+
+class BranchPickerScreen(EscapeDismissMixin, ModalScreen[str | None]):
+    """Bottom-right branch picker popup."""
+
+    CSS = """
+    BranchPickerScreen {
+        align: right bottom;
+        background: #0d1117 50%;
+    }
+
+    #branch-picker {
+        width: 38;
+        height: auto;
+        max-height: 20;
+        border: solid #30363d;
+        background: #161b22;
+        margin-bottom: 1;
+        margin-right: 0;
+    }
+
+    #branch-picker-title {
+        color: #6e7681;
+        height: 1;
+        padding: 0 1;
+        background: #0d1117;
+    }
+
+    #branch-list {
+        height: auto;
+        max-height: 18;
+        border: none;
+    }
+    """
+
+    def __init__(self, branches: list[str], current: str) -> None:
+        super().__init__()
+        self._branches = branches
+        self._current = current
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="branch-picker"):
+            yield Label("switch branch", id="branch-picker-title")
+            options = [
+                Option(("* " if b == self._current else "  ") + b, id=b)
+                for b in self._branches
+            ]
+            yield OptionList(*options, id="branch-list")
+
+    def on_mount(self) -> None:
+        ol = self.query_one("#branch-list", OptionList)
+        try:
+            ol.highlighted = self._branches.index(self._current)
+        except ValueError:
+            pass
+        ol.focus()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(event.option_id)

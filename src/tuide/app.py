@@ -22,6 +22,7 @@ from tuide.services.search import SearchService
 from tuide.platform import PlatformInfo, detect_platform
 from tuide.services.workspace import WorkspaceStore
 from tuide.widgets.dialogs import (
+    BranchPickerScreen,
     CommandPaletteDialog,
     ConfirmDialog,
     HelpDialog,
@@ -41,8 +42,8 @@ class TuideApp(App[None]):
     CSS = """
     Screen {
         layout: vertical;
-        background: #0b0f13;
-        color: #eef2f5;
+        background: #0d1117;
+        color: #e6edf3;
     }
 
     #root {
@@ -63,50 +64,50 @@ class TuideApp(App[None]):
         min-height: 1;
         height: 1;
         padding: 0;
-        background: #111a22;
+        background: #161b22;
         border: none;
-        color: #dce7ef;
+        color: #c9d1d9;
     }
 
     .menu-button:hover {
-        background: #16222c;
+        background: #1c2128;
     }
 
     .menu-button.-active,
     .menu-button:focus {
-        background: #243342;
-        color: #fff6dd;
+        background: #21262d;
+        color: #e6edf3;
     }
 
     #main-layout {
         height: 1fr;
         padding-top: 0;
-        background: #10171e;
+        background: #0d1117;
     }
 
     .panel-frame {
         border: none;
-        background: #10171e;
+        background: #0d1117;
         padding: 0 0 0 0;
         min-width: 24;
     }
 
     .panel-frame:focus-within {
-        background: #121c24;
+        background: #161b22;
     }
 
     .panel-splitter {
         width: 1;
         min-width: 1;
         height: 1fr;
-        background: #1f2d38;
-        color: #1f2d38;
+        background: #3d444d;
+        color: #3d444d;
     }
 
     .panel-splitter:hover,
     .panel-splitter.-dragging {
-        background: #d8a548;
-        color: #0b1014;
+        background: #388bfd;
+        color: #0d1117;
     }
 
     #workspace-panel {
@@ -124,20 +125,20 @@ class TuideApp(App[None]):
 
     .panel-title {
         text-style: bold;
-        color: #f2c66a;
+        color: #79c0ff;
         height: 1;
         padding: 0 1;
     }
 
     .panel-body {
-        padding: 0 1;
-        color: #ced9e0;
+        padding: 0;
+        color: #c9d1d9;
     }
 
     .workspace-summary {
-        background: #0d141b;
-        border: round #1b2a37;
-        color: #b8c7d3;
+        background: #0d1117;
+        border: solid #21262d;
+        color: #8b949e;
         height: auto;
         padding: 0 1;
         margin: 0;
@@ -151,8 +152,8 @@ class TuideApp(App[None]):
 
     #workspace-tree {
         height: 1fr;
-        background: #0d141b;
-        border: round #1b2a37;
+        background: #0d1117;
+        border: none;
         padding: 0;
         margin: 0;
     }
@@ -167,10 +168,10 @@ class TuideApp(App[None]):
 
     #welcome-copy,
     .editor-welcome {
-        color: #ced9e0;
+        color: #8b949e;
         padding: 1 1;
-        background: #0d141b;
-        border: round #1b2a37;
+        background: #0d1117;
+        border: none;
         width: 1fr;
     }
 
@@ -184,9 +185,9 @@ class TuideApp(App[None]):
     }
 
     .terminal-fallback-copy {
-        background: #0d141b;
-        border: round #1b2a37;
-        color: #ced9e0;
+        background: #0d1117;
+        border: none;
+        color: #8b949e;
         padding: 1 1;
         margin: 0;
         height: 1fr;
@@ -195,9 +196,30 @@ class TuideApp(App[None]):
     #status-bar {
         dock: bottom;
         height: 1;
-        background: #060a0d;
-        color: #aab8c4;
+        background: #010409;
+        color: #8b949e;
+        padding: 0;
+    }
+
+    #status-left {
+        width: 1fr;
         padding: 0 1;
+        height: 1;
+    }
+
+    #branch-indicator {
+        width: auto;
+        height: 1;
+        min-height: 1;
+        padding: 0 1;
+        border: none;
+        background: #1f2d3d;
+        color: #79c0ff;
+    }
+
+    #branch-indicator:hover {
+        background: #1d3557;
+        color: #a5d6ff;
     }
     """
 
@@ -258,7 +280,9 @@ class TuideApp(App[None]):
                 yield EditorPanel()
                 yield VerticalSplitter(self.adjust_terminal_by, id="terminal-splitter")
                 yield TerminalPanel(self.platform.default_shell)
-            yield Static(self.build_status_text(), id="status-bar")
+            with Horizontal(id="status-bar"):
+                yield Static(self.build_status_text(), id="status-left")
+                yield Button("⎇ —", id="branch-indicator")
         yield Footer()
 
     def _load_workspace_state(self):
@@ -303,9 +327,52 @@ class TuideApp(App[None]):
         self.sync_splitter_visibility()
 
     def refresh_status(self) -> None:
-        """Update the first-pass status bar."""
-        status = self.query_one("#status-bar", Static)
-        status.update(self.build_status_text())
+        """Update the status bar."""
+        self.query_one("#status-left", Static).update(self.build_status_text())
+        self._refresh_branch_indicator()
+
+    def _refresh_branch_indicator(self) -> None:
+        """Update the branch indicator label."""
+        if not self.is_mounted:
+            return
+        try:
+            indicator = self.query_one("#branch-indicator", Button)
+        except Exception:
+            return
+        repo_root = self._current_repo_root()
+        if repo_root is None:
+            indicator.label = "⎇ —"
+            return
+        branch = self.git_service.current_branch(repo_root) or "detached"
+        indicator.label = f"⎇ {branch}"
+
+    def _current_repo_root(self) -> Path | None:
+        """Return the repo root for the active file or primary workspace root."""
+        try:
+            editor = self.query_one(EditorPanel)
+        except Exception:
+            return None
+        path = editor.active_path or self.workspace_state.roots[0]
+        return self.git_service.repo_root_for(path)
+
+    async def action_open_branch_picker(self) -> None:
+        """Open the branch picker popup."""
+        repo_root = self._current_repo_root()
+        if repo_root is None:
+            self.notify("No git repository found", severity="warning")
+            return
+        branches = self.git_service.list_all_branches(repo_root)
+        if not branches:
+            self.notify("No branches found", severity="warning")
+            return
+        current = self.git_service.current_branch(repo_root) or "detached"
+        selected = await self.wait_for_screen_result(BranchPickerScreen(branches, current))
+        if not selected or selected == current:
+            return
+        success, output = self.git_service.checkout_branch(repo_root, selected)
+        severity = "information" if success else "error"
+        self.notify(f"{'→' if success else '✗'} {selected}" + ("" if success else f"\n{output}"), severity=severity)
+        self._refresh_branch_indicator()
 
     def show_confirm_dialog(
         self,
@@ -379,6 +446,9 @@ class TuideApp(App[None]):
                 top_screen.dismiss(prompt_input.value)
                 return
 
+        if button_id == "branch-indicator":
+            self.run_worker(self.action_open_branch_picker(), exclusive=False)
+            return
         if not button_id.startswith("menu-"):
             return
         if button_id == "menu-add-root":
