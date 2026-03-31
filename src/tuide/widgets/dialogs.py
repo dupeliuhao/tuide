@@ -532,3 +532,50 @@ class BranchPickerScreen(EscapeDismissMixin, ModalScreen[str | None]):
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self.dismiss(event.option_id)
+
+
+class ContextMenuScreen(EscapeDismissMixin, ModalScreen[str | None]):
+    """Right-click context menu positioned at cursor coordinates."""
+
+    CSS = """
+    ContextMenuScreen {
+        background: #0d1117 0%;
+    }
+
+    #context-menu {
+        width: 38;
+        height: auto;
+        border: solid #30363d;
+        background: #161b22;
+    }
+
+    #context-menu-list {
+        height: auto;
+        max-height: 20;
+        border: none;
+    }
+    """
+
+    def __init__(self, items: list[ChoiceItem], x: int, y: int) -> None:
+        super().__init__()
+        self._items = items
+        self._x = x
+        self._y = y
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="context-menu"):
+            yield OptionList(
+                *[Option(item.label, id=item.id) for item in self._items],
+                id="context-menu-list",
+            )
+
+    def on_mount(self) -> None:
+        sw, sh = self.screen.size
+        menu_w, menu_h = 38, min(len(self._items) + 2, 20)
+        x = min(self._x, sw - menu_w - 1)
+        y = min(self._y, sh - menu_h - 1)
+        self.query_one("#context-menu").styles.offset = (x, y)
+        self.query_one("#context-menu-list", OptionList).focus()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(event.option_id)

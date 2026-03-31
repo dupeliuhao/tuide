@@ -25,6 +25,7 @@ from tuide.widgets.dialogs import (
     BranchPickerScreen,
     CommandPaletteDialog,
     ConfirmDialog,
+    ContextMenuScreen,
     HelpDialog,
     OptionPickerDialog,
     PromptDialog,
@@ -485,6 +486,92 @@ class TuideApp(App[None]):
         """Refresh status and branch when the active editor tab changes."""
         self.refresh_status()
         self._refresh_branch_indicator()
+
+    def on_mouse_up(self, event) -> None:
+        """Show editor context menu on right-click."""
+        if event.button != 2:
+            return
+        if len(self.screen_stack) > 1:
+            return
+        try:
+            widget, _ = self.screen.get_widget_at(event.screen_x, event.screen_y)
+        except Exception:
+            return
+        from textual.widgets import TextArea
+        if not isinstance(widget, TextArea):
+            return
+        editor = self.query_one(EditorPanel)
+        if editor.active_text_area is not widget:
+            return
+        self.run_worker(
+            self._show_editor_context_menu(event.screen_x, event.screen_y),
+            exclusive=False,
+        )
+
+    async def _show_editor_context_menu(self, x: int, y: int) -> None:
+        """Build and show the right-click context menu for the editor."""
+        editor = self.query_one(EditorPanel)
+        ta = editor.active_text_area
+        if ta is None:
+            return
+
+        selected = ta.selected_text.strip()
+        short = (selected[:24] + "…") if len(selected) > 24 else selected
+
+        items: list[ChoiceItem] = []
+        if selected:
+            items += [
+                ChoiceItem("ctx.find_selected", f'Find: "{short}"'),
+                ChoiceItem("ctx.find_workspace_selected", f'Find in workspace: "{short}"'),
+                ChoiceItem("ctx.git_line_history", "Git history for selection"),
+            ]
+
+        items += [
+            ChoiceItem("ctx.git_diff", "Git diff with branch"),
+            ChoiceItem("ctx.git_history", "Git file history"),
+            ChoiceItem("ctx.git_blame", "Git blame"),
+            ChoiceItem("ctx.definition", "Go to definition"),
+            ChoiceItem("ctx.references", "Find references"),
+            ChoiceItem("ctx.python_outline", "Python outline"),
+            ChoiceItem("ctx.save", "Save file"),
+        ]
+
+        action_id = await self.wait_for_screen_result(ContextMenuScreen(items, x, y))
+        if action_id is None:
+            return
+
+        if action_id == "ctx.find_selected":
+            matches = editor.find_in_active_file(selected)
+            text = "\n".join(matches) if matches else "No matches."
+            await editor.open_result_tab(f"find:{short}", text)
+        elif action_id == "ctx.find_workspace_selected":
+            matches = self.search_service.search_workspace_text(self.workspace_state.roots, selected)
+            text = "\n".join(matches) if matches else "No matches."
+            await editor.open_result_tab(f"workspace-search:{short}", text)
+        elif action_id == "ctx.git_line_history":
+            cursor = editor.active_cursor()
+            start, end = (cursor[0], cursor[0]) if cursor else (1, 1)
+            context = self.active_file_context()
+            if context:
+                path, repo_root = context
+                history = self.git_service.line_history(repo_root, path, start, end)
+                if history:
+                    await editor.open_readonly_tab(f"line-history:{path.name}:{start}-{end}", history)
+                else:
+                    self.notify("No line history found", severity="warning")
+        elif action_id == "ctx.save":
+            self.action_save_file()
+        elif action_id in {"ctx.git_diff", "ctx.git_history", "ctx.git_blame",
+                           "ctx.definition", "ctx.references", "ctx.python_outline"}:
+            mapping = {
+                "ctx.git_diff": "git.diff",
+                "ctx.git_history": "git.history",
+                "ctx.git_blame": "git.blame",
+                "ctx.definition": "code.definition",
+                "ctx.references": "code.references",
+                "ctx.python_outline": "python.outline",
+            }
+            await self.run_command(mapping[action_id])
 
     def action_focus_next(self) -> None:
         """Cycle focus forward across main panels."""
