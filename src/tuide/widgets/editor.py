@@ -80,7 +80,8 @@ def build_editor_theme() -> TextAreaTheme:
         name="tuide_code",
         base_style=Style(color="#cccccc", bgcolor="#0d1117"),
         gutter_style=Style(color="#6e7681", bgcolor="#0d1117"),
-        cursor_line_style=Style(bgcolor="#161b22"),
+        cursor_line_style=Style(bgcolor="#2d333b"),
+        cursor_line_gutter_style=Style(color="#e6edf3", bgcolor="#2d333b"),
         selection_style=Style(bgcolor="#1d3557"),
         syntax_styles=syntax_styles,
     )
