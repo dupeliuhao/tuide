@@ -7,9 +7,9 @@ from pathlib import Path
 
 from rich.style import Style
 from rich.text import Text
-from textual import on
+from textual import events, on
 from textual.containers import Vertical
-from textual.widgets import Label, Static, TabPane, TabbedContent, TextArea
+from textual.widgets import Label, Static, Tab, TabPane, TabbedContent, TextArea
 from textual.widgets.text_area import TextAreaTheme
 
 from tuide.models import OpenDocument
@@ -331,6 +331,29 @@ class EditorPanel(Vertical):
                 tab.add_class("--dirty")
             else:
                 tab.remove_class("--dirty")
+        except Exception:
+            pass
+
+    @on(events.Click, "Tab")
+    def _on_tab_close_click(self, event: events.Click) -> None:
+        """Close a tab when the × at the end of its label is clicked."""
+        tab = event.widget
+        if not isinstance(tab, Tab):
+            return
+        # The label ends with "  ×" (3 cells). Only trigger in the last 3 cells.
+        if event.x < tab.size.width - 3:
+            return
+        event.stop()
+        pane_id = tab.id.removeprefix("tab-")
+        if pane_id == "welcome-tab":
+            return
+        self.run_worker(self._close_pane_by_id(pane_id), exclusive=False)
+
+    async def _close_pane_by_id(self, pane_id: str) -> None:
+        """Remove a pane (and its document entry) by pane id."""
+        self.documents.pop(pane_id, None)
+        try:
+            await self.tabbed_content.remove_pane(pane_id)
         except Exception:
             pass
 

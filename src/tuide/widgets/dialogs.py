@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.events import Key
 from textual.geometry import Spacing
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, OptionList
+from textual.widgets import Button, Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
 from tuide.models import ChoiceItem, CommandItem
@@ -590,3 +592,76 @@ class ContextMenuScreen(EscapeDismissMixin, ModalScreen[str | None]):
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self.dismiss(event.option_id)
+
+
+class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int] | None]):
+    """Bottom-right popup showing find-references results.
+
+    Returns ``(path_str, line_number)`` when the user selects an entry, or
+    ``None`` when dismissed.
+    """
+
+    CSS = """
+    FindReferencesScreen {
+        align: right bottom;
+        background: #0d1117 50%;
+    }
+
+    #refs-panel {
+        width: 70;
+        height: auto;
+        max-height: 22;
+        border: solid #388bfd;
+        background: #161b22;
+        margin-bottom: 1;
+        margin-right: 0;
+        padding: 0;
+    }
+
+    #refs-title {
+        color: #79c0ff;
+        height: 1;
+        padding: 0 1;
+        background: #0d1117;
+    }
+
+    #refs-empty {
+        color: #8b949e;
+        padding: 1 2;
+    }
+
+    #refs-list {
+        height: auto;
+        max-height: 20;
+        border: none;
+    }
+    """
+
+    def __init__(self, symbol: str, results: list[tuple[str, int, str]]) -> None:
+        """``results`` is a list of ``(path_str, line, snippet)`` tuples."""
+        super().__init__()
+        self._symbol = symbol
+        self._results = results
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="refs-panel"):
+            yield Label(f"References: {self._symbol}", id="refs-title")
+            if not self._results:
+                yield Static("No references found.", id="refs-empty")
+            else:
+                options = [
+                    Option(f"{Path(path).name}:{line}  {snippet[:60]}", id=str(i))
+                    for i, (path, line, snippet) in enumerate(self._results)
+                ]
+                yield OptionList(*options, id="refs-list")
+
+    def on_mount(self) -> None:
+        try:
+            self.query_one("#refs-list", OptionList).focus()
+        except Exception:
+            pass
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        idx = int(event.option_id)
+        path_str, line, _snippet = self._results[idx]
+        self.dismiss((path_str, line))

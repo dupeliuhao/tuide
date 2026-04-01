@@ -9,11 +9,9 @@ from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen
 from textual.widgets import Button, DirectoryTree, Footer, Input, Select, Static, TabbedContent, TextArea
 
 from tuide.models import CapabilityStatus, ChoiceItem, CommandItem
-from tuide.models import AppConfig
 from tuide.services.config import ConfigStore
 from tuide.services.git import GitService
 from tuide.services.lsp import LspService
@@ -26,6 +24,7 @@ from tuide.widgets.dialogs import (
     CommandPaletteDialog,
     ConfirmDialog,
     ContextMenuScreen,
+    FindReferencesScreen,
     HelpDialog,
     OptionPickerDialog,
     PromptDialog,
@@ -40,7 +39,20 @@ from tuide.widgets.terminal import TerminalPanel, terminal_backend_available
 class TuideApp(App[None]):
     """Linux-first shell for the tuide IDE."""
 
+    NOTIFY_TIMEOUT = 3.0
+
     CSS = """
+    Toast {
+        width: auto;
+        max-width: 55;
+        padding: 0 1;
+        height: auto;
+    }
+
+    ToastRack {
+        padding: 0 1 1 0;
+    }
+
     Screen {
         layout: vertical;
         background: #0d1117;
@@ -243,6 +255,11 @@ class TuideApp(App[None]):
 
     .diff-view {
         height: 1fr;
+    }
+
+    .diff-content {
+        padding: 0;
+        background: #0d1117;
     }
 
     .diff-pane {
@@ -888,6 +905,7 @@ class TuideApp(App[None]):
             CommandItem("view.toggle_terminal", "Toggle terminal", "Show or hide the right panel"),
             CommandItem("git.session", "Git session", "Open project-level Git actions"),
             CommandItem("git.diff", "Git diff with branch", "Compare current file to another branch"),
+            CommandItem("git.changed_files", "Git changed files", "Show side-by-side diff for any file changed vs HEAD"),
             CommandItem("git.history", "Git file history", "Show history for the active file"),
             CommandItem("git.blame", "Git blame", "Show blame for the active file"),
             CommandItem("git.line_history", "Git line history", "Show history for a chosen line range"),
@@ -971,6 +989,7 @@ class TuideApp(App[None]):
             "search.find_workspace": self.action_find_in_workspace,
             "git.session": self.action_git_session,
             "git.diff": self.action_git_diff,
+            "git.changed_files": self.action_git_changed_files,
             "git.history": self.action_git_history,
             "git.blame": self.action_git_blame,
             "git.line_history": self.action_git_line_history,
@@ -1270,6 +1289,40 @@ class TuideApp(App[None]):
             return None
         return path, repo_root
 
+    async def action_git_changed_files(self) -> None:
+        """Pick a file changed vs HEAD and open it in a side-by-side diff tab."""
+        repo_root = self.active_repo_root()
+        if repo_root is None:
+            return
+        changed = self.git_service.list_changed_files(repo_root)
+        if not changed:
+            self.notify("No changed files found vs HEAD", severity="information")
+            return
+        choice = await self.wait_for_screen_result(
+            OptionPickerDialog(
+                "Changed files",
+                [ChoiceItem(id=str(p), label=str(p.relative_to(repo_root))) for p in changed],
+                placeholder="Filter files",
+            )
+        )
+        if not choice:
+            return
+        target = Path(choice)
+        old_text = self.git_service.show_file(repo_root, "HEAD", target) or ""
+        try:
+            new_text = target.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            new_text = ""
+        rel = str(target.relative_to(repo_root))
+        await self.query_one(EditorPanel).open_diff_tab(
+            f"changed:{target.name}",
+            f"HEAD:{rel}",
+            old_text,
+            f"working tree:{rel}",
+            new_text,
+        )
+        self.refresh_status()
+
     async def action_git_diff(self) -> None:
         """Open a branch diff tab for the active file."""
         context = self.active_file_context()
@@ -1423,8 +1476,48 @@ class TuideApp(App[None]):
         await self._run_code_intelligence("definition")
 
     async def action_code_find_references(self) -> None:
-        """Perform the current references action with LSP/AI fallback."""
-        await self._run_code_intelligence("references")
+        """Find all references to a symbol across the workspace via regex search."""
+        symbol = await self.wait_for_screen_result(
+            PromptDialog("Find references", placeholder="symbol name")
+        )
+        if not symbol:
+            return
+        symbol = symbol.strip()
+        if not symbol:
+            return
+
+        raw_matches = self.search_service.search_workspace_text(
+            self.workspace_state.roots, symbol
+        )
+        # Parse "path:line: snippet" tuples
+        results: list[tuple[str, int, str]] = []
+        for match in raw_matches:
+            try:
+                path_part, rest = match.split(":", 1)
+                line_part, snippet = rest.split(": ", 1)
+                results.append((path_part, int(line_part), snippet.strip()))
+            except (ValueError, IndexError):
+                continue
+
+        selection = await self.wait_for_screen_result(
+            FindReferencesScreen(symbol, results)
+        )
+        if selection is None:
+            return
+
+        path_str, line = selection
+        target = Path(path_str)
+        editor = self.query_one(EditorPanel)
+        await editor.open_file(target)
+        self.refresh_status()
+        # Move cursor to the matched line
+        text_area = editor.active_text_area
+        if text_area is not None:
+            try:
+                text_area.cursor_location = (max(0, line - 1), 0)
+                text_area.scroll_cursor_visible()
+            except Exception:
+                pass
 
     async def _run_code_intelligence(self, intent: str) -> None:
         """Run code intelligence or AI fallback."""

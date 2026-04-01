@@ -7,8 +7,9 @@ import pty
 import shlex
 from pathlib import Path
 
+from textual import events, on
 from textual.containers import Vertical
-from textual.widgets import Button, Static, TabPane, TabbedContent
+from textual.widgets import Button, Static, Tab, TabPane, TabbedContent
 
 
 def _patch_terminal_env() -> None:
@@ -153,3 +154,31 @@ class TerminalPanel(Vertical):
     def restart(self) -> bool:
         """Restart the active terminal (backward-compat alias)."""
         return self.restart_active()
+
+    @on(events.Click, "Tab")
+    def _on_tab_close_click(self, event: events.Click) -> None:
+        """Close a terminal tab when the × at the end of its label is clicked."""
+        tab = event.widget
+        if not isinstance(tab, Tab):
+            return
+        if event.x < tab.size.width - 3:
+            return
+        event.stop()
+        pane_id = tab.id.removeprefix("tab-")
+        self.run_worker(self._close_terminal_pane(pane_id), exclusive=False)
+
+    async def _close_terminal_pane(self, pane_id: str) -> None:
+        """Terminate and remove a specific terminal pane."""
+        tabs = self._tabs
+        if tabs.tab_count <= 1:
+            return
+        widget = self._terminal_widgets.pop(pane_id, None)
+        if widget is not None:
+            try:
+                widget.terminate()
+            except Exception:
+                pass
+        try:
+            await tabs.remove_pane(pane_id)
+        except Exception:
+            pass

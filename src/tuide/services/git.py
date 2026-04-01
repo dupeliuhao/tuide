@@ -217,6 +217,21 @@ class GitService:
             return False, commit_output
         return False, commit_output
 
+    def list_changed_files(self, repo_root: Path) -> list[Path]:
+        """Return paths of files changed vs HEAD (staged + unstaged)."""
+        changed: set[str] = set()
+        for args in (
+            ["diff", "--name-only", "HEAD"],
+            ["diff", "--name-only", "--cached", "HEAD"],
+        ):
+            result = self._run(repo_root, args)
+            if result is not None:
+                for line in result.stdout.splitlines():
+                    line = line.strip()
+                    if line:
+                        changed.add(line)
+        return [repo_root / rel for rel in sorted(changed)]
+
     def push(self, repo_root: Path) -> tuple[bool, str]:
         """Push the current branch to its configured upstream."""
         return self._run_with_error(repo_root, ["push"])
