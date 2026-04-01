@@ -650,7 +650,10 @@ class TuideApp(App[None]):
         # ContentTab IDs are prefixed with "--content-tab-"; strip it to get the pane id.
         _PREFIX = "--content-tab-"
 
-        editor = self.query_one(EditorPanel)
+        try:
+            editor = self.query_one(EditorPanel)
+        except Exception:
+            return
         if editor.region.contains(sx, sy):
             try:
                 tabs_bar = editor.tabbed_content.query_one("Tabs")
@@ -670,7 +673,10 @@ class TuideApp(App[None]):
             except Exception:
                 pass
             return
-        terminal = self.query_one(TerminalPanel)
+        try:
+            terminal = self.query_one(TerminalPanel)
+        except Exception:
+            return
         if terminal.region.contains(sx, sy):
             try:
                 tabs_bar = terminal.query_one("Tabs")
