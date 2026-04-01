@@ -20,6 +20,7 @@ class OpenDocument:
     path: Path
     pane_id: str
     dirty: bool = False
+    saved_text: str = ""
 
 
 @dataclass(slots=True)

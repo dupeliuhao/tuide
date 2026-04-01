@@ -6,6 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from rich.style import Style
+from rich.text import Text
 from textual import on
 from textual.containers import Vertical
 from textual.widgets import Label, Static, TabPane, TabbedContent, TextArea
@@ -109,6 +110,16 @@ def build_code_editor(text: str, path: Path, pane_id: str) -> TextArea:
     return editor
 
 
+def _closeable_label(name: str, dirty: bool = False) -> Text:
+    """Build a tab label with a dimmed × close button."""
+    t = Text()
+    if dirty:
+        t.append("* ", style="bold")
+    t.append(name)
+    t.append("  ×", style="dim")
+    return t
+
+
 class EditorPanel(Vertical):
     """Tabbed editor area that can open files from the workspace tree."""
 
@@ -143,9 +154,9 @@ class EditorPanel(Vertical):
         except Exception:
             content = path.read_text(encoding="utf-8", errors="replace")
             editor = build_code_editor(content, path, pane_id)
-            pane = TabPane(path.name, editor, id=pane_id)
+            pane = TabPane(_closeable_label(path.name), editor, id=pane_id)
             await tabbed.add_pane(pane)
-            self.documents[pane_id] = OpenDocument(path=path, pane_id=pane_id)
+            self.documents[pane_id] = OpenDocument(path=path, pane_id=pane_id, saved_text=content)
         tabbed.active = pane_id
 
         editor = self.active_text_area
@@ -223,18 +234,24 @@ class EditorPanel(Vertical):
 
         document.path.write_text(editor.text, encoding="utf-8")
         document.dirty = False
+        document.saved_text = editor.text
         self._update_tab_title(document)
         return document.path
 
     async def close_active_tab(self) -> Path | None:
-        """Close the active file tab if one is selected."""
+        """Close the active tab. Closes virtual tabs too; skips the Welcome tab."""
+        tabbed = self.tabbed_content
+        active_id = tabbed.active
         document = self.active_document
+
         if document is None:
+            # Virtual or Welcome tab — only close if it's not the lone Welcome tab
+            if active_id != "welcome-tab":
+                await tabbed.remove_pane(active_id)
             return None
 
-        await self.tabbed_content.remove_pane(document.pane_id)
+        await tabbed.remove_pane(document.pane_id)
         self.documents.pop(document.pane_id, None)
-
         return document.path
 
     async def open_readonly_tab(self, title: str, text: str, *, language: str | None = None) -> str:
@@ -247,7 +264,7 @@ class EditorPanel(Vertical):
         except Exception:
             viewer = TextArea(text=text, language=language, read_only=True, id=f"viewer-{pane_id}")
             viewer.show_line_numbers = True
-            pane = TabPane(title, viewer, id=pane_id)
+            pane = TabPane(_closeable_label(title), viewer, id=pane_id)
             await tabbed.add_pane(pane)
         tabbed.active = pane_id
 
@@ -260,7 +277,7 @@ class EditorPanel(Vertical):
         try:
             tabbed.get_pane(pane_id)
         except Exception:
-            pane = TabPane(title, Static(text, classes="panel-body"), id=pane_id)
+            pane = TabPane(_closeable_label(title), Static(text, classes="panel-body"), id=pane_id)
             await tabbed.add_pane(pane)
         tabbed.active = pane_id
         return pane_id
@@ -279,7 +296,7 @@ class EditorPanel(Vertical):
         try:
             tabbed.get_pane(pane_id)
         except Exception:
-            pane = TabPane(title, DiffView(left_title, left_text, right_title, right_text), id=pane_id)
+            pane = TabPane(_closeable_label(title), DiffView(left_title, left_text, right_title, right_text), id=pane_id)
             await tabbed.add_pane(pane)
         tabbed.active = pane_id
         return pane_id
@@ -290,18 +307,29 @@ class EditorPanel(Vertical):
 
     @on(TextArea.Changed)
     def handle_text_change(self, event: TextArea.Changed) -> None:
-        """Track dirty state for open documents."""
+        """Track dirty state for open documents, including undo back to saved state."""
         pane_id = event.text_area.id.removeprefix("editor-")
         document = self.documents.get(pane_id)
-        if document is None or document.dirty:
+        if document is None:
             return
-        document.dirty = True
+        now_dirty = event.text_area.text != document.saved_text
+        if now_dirty == document.dirty:
+            return
+        document.dirty = now_dirty
         self._update_tab_title(document)
 
     def _update_tab_title(self, document: OpenDocument) -> None:
-        """Refresh a tab title to reflect dirty state."""
+        """Refresh a tab title and colour to reflect dirty state."""
         pane = self.tabbed_content.get_pane(document.pane_id)
-        pane.title = f"* {document.path.name}" if document.dirty else document.path.name
+        pane.title = _closeable_label(document.path.name, dirty=document.dirty)
+        try:
+            tab = self.tabbed_content.get_tab(document.pane_id)
+            if document.dirty:
+                tab.add_class("--dirty")
+            else:
+                tab.remove_class("--dirty")
+        except Exception:
+            pass
 
     @staticmethod
     def _pane_id_for_path(path: Path) -> str:
@@ -311,4 +339,4 @@ class EditorPanel(Vertical):
     @staticmethod
     def _pane_id_for_virtual_title(title: str) -> str:
         """Return a stable pane id for a virtual tab."""
-        return "virtual-" + title.lower().replace(" ", "-").replace("/", "-").replace(":", "")
+        return "virtual-" + title.lower().replace(" ", "-").replace("/", "-").replace(":", "").replace(".", "-")

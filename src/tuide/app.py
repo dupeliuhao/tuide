@@ -161,10 +161,75 @@ class TuideApp(App[None]):
 
     #editor-tabs {
         height: 1fr;
-        background: transparent;
+        background: #0d1117;
         border-top: none;
         padding-top: 0;
         margin: 0;
+    }
+
+    #terminal-tabs {
+        height: 1fr;
+        background: #0d1117;
+        border-top: none;
+        padding-top: 0;
+        margin: 0;
+    }
+
+    /* Unify TabbedContent internals across all panels */
+    Tabs {
+        background: #0d1117;
+        border-bottom: none;
+    }
+
+    Tabs #tabs-list,
+    Tabs #tabs-list-bar,
+    Tabs #tabs-scroll {
+        background: #0d1117;
+    }
+
+    TabPane {
+        background: #0d1117;
+        padding: 0;
+    }
+
+    Tab {
+        background: #0d1117;
+        color: #8b949e;
+    }
+
+    Tab.-active {
+        background: #0d1117;
+        color: #e6edf3;
+    }
+
+    Tab:hover {
+        background: #161b22;
+        color: #c9d1d9;
+    }
+
+    DirectoryTree {
+        background: #0d1117;
+    }
+
+    Select {
+        background: #0d1117;
+    }
+
+    SelectCurrent {
+        background: #0d1117;
+        border: none;
+    }
+
+    Tab.--dirty {
+        color: #e8820c;
+    }
+
+    Tab.--dirty:hover {
+        color: #f0a050;
+    }
+
+    Tab.--dirty.-active {
+        color: #f0a050;
     }
 
     #welcome-copy,
@@ -183,6 +248,43 @@ class TuideApp(App[None]):
     .diff-pane {
         width: 1fr;
         padding: 0 1 1 0;
+    }
+
+    .terminal-add-btn {
+        dock: right;
+        width: 3;
+        height: 3;
+        min-width: 3;
+        background: #0d1117;
+        border: none;
+        color: #8b949e;
+    }
+
+    .terminal-add-btn:hover {
+        background: #161b22;
+        color: #79c0ff;
+    }
+
+    /* DirectoryTree colour consistency */
+    DirectoryTree .directory-tree--file {
+        color: #e6edf3;
+    }
+
+    DirectoryTree .directory-tree--folder {
+        color: #79c0ff;
+    }
+
+    DirectoryTree .tree--cursor {
+        background: #1f2d3d;
+        color: #e6edf3;
+    }
+
+    DirectoryTree .tree--highlight {
+        background: #21262d;
+    }
+
+    DirectoryTree .tree--guides {
+        color: #3d444d;
     }
 
     .terminal-fallback-copy {
@@ -239,6 +341,8 @@ class TuideApp(App[None]):
         Binding("ctrl+b", "toggle_workspace", "Toggle Workspace"),
         Binding("ctrl+j", "toggle_terminal", "Toggle Terminal"),
         Binding("ctrl+r", "restart_terminal", "Restart Terminal"),
+        Binding("ctrl+t", "new_terminal_tab", "New Terminal Tab", show=False),
+        Binding("ctrl+shift+w", "close_terminal_tab", "Close Terminal Tab", show=False),
         Binding("ctrl+alt+comma", "shrink_workspace", "Narrow Left", show=False),
         Binding("ctrl+alt+period", "grow_workspace", "Widen Left", show=False),
         Binding("ctrl+alt+bracketleft", "shrink_terminal", "Narrow Right", show=False),
@@ -247,12 +351,13 @@ class TuideApp(App[None]):
         Binding("ctrl+backslash", "editor_context_menu", "Context Menu", show=False),
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, startup_path: Path | None = None) -> None:
         super().__init__()
         self.platform: PlatformInfo = detect_platform()
         self.config_store = ConfigStore()
         self.config = self.config_store.load()
         self.workspace_store = WorkspaceStore()
+        self._startup_path = startup_path
         self.workspace_state = self._load_workspace_state()
         self.git_service = GitService()
         self.lsp_service = LspService()
@@ -290,6 +395,8 @@ class TuideApp(App[None]):
 
     def _load_workspace_state(self):
         """Load workspace state and provide a cwd fallback for first launch."""
+        if self._startup_path is not None and self._startup_path.is_dir():
+            return type(self.workspace_store.load())(roots=[self._startup_path])
         workspace = self.workspace_store.load()
         if workspace.roots:
             return workspace
@@ -450,6 +557,9 @@ class TuideApp(App[None]):
         if button_id == "branch-indicator":
             self.run_worker(self.action_open_branch_picker(), exclusive=False)
             return
+        if button_id == "new-terminal-tab-btn":
+            self.action_new_terminal_tab()
+            return
         if not button_id.startswith("menu-"):
             return
         if button_id == "menu-add-root":
@@ -494,16 +604,32 @@ class TuideApp(App[None]):
         self._refresh_branch_indicator()
 
     def on_mouse_up(self, event) -> None:
-        """Show editor context menu on right-click."""
+        """Handle mouse-up: × close on editor tabs, right-click context menus."""
+        if event.button == 1:
+            self._maybe_close_editor_tab(event.screen_x, event.screen_y)
+            return
         if event.button not in (2, 3):
             return
         if len(self.screen_stack) > 1:
             return
         editor = self.query_one(EditorPanel)
-        if editor.active_text_area is None:
-            return
-        # Only trigger when the click is within the editor panel region
         if not editor.region.contains(event.screen_x, event.screen_y):
+            return
+
+        # Right-click on the tab bar → tab context menu
+        try:
+            tab_bar = editor.tabbed_content.query_one("Tabs")
+            if tab_bar.region.contains(event.screen_x, event.screen_y):
+                self.run_worker(
+                    self._show_tab_context_menu(event.screen_x, event.screen_y),
+                    exclusive=False,
+                )
+                return
+        except Exception:
+            pass
+
+        # Right-click in editor content area
+        if editor.active_text_area is None:
             return
         self.run_worker(
             self._show_editor_context_menu(event.screen_x, event.screen_y),
@@ -518,6 +644,63 @@ class TuideApp(App[None]):
             return
         r = editor.region
         await self._show_editor_context_menu(r.x + r.width // 2, r.y + r.height // 2)
+
+    def _maybe_close_editor_tab(self, sx: int, sy: int) -> None:
+        """Close an editor or terminal tab when the × in its label is clicked."""
+        # ContentTab IDs are prefixed with "--content-tab-"; strip it to get the pane id.
+        _PREFIX = "--content-tab-"
+
+        editor = self.query_one(EditorPanel)
+        if editor.region.contains(sx, sy):
+            try:
+                tabs_bar = editor.tabbed_content.query_one("Tabs")
+                if tabs_bar.region.contains(sx, sy):
+                    for tab in tabs_bar.query("Tab"):
+                        r = tab.region
+                        if not r.contains(sx, sy):
+                            continue
+                        pane_id = tab.id.removeprefix(_PREFIX)
+                        if pane_id == "welcome-tab":
+                            break
+                        # × occupies the last 2 columns of the tab (right padding is 1)
+                        if sx >= r.right - 2:
+                            editor.tabbed_content.active = pane_id
+                            self.run_worker(self.action_close_tab(), exclusive=False)
+                        break
+            except Exception:
+                pass
+            return
+        terminal = self.query_one(TerminalPanel)
+        if terminal.region.contains(sx, sy):
+            try:
+                tabs_bar = terminal.query_one("Tabs")
+                if tabs_bar.region.contains(sx, sy):
+                    for tab in tabs_bar.query("Tab"):
+                        r = tab.region
+                        if not r.contains(sx, sy):
+                            continue
+                        pane_id = tab.id.removeprefix(_PREFIX)
+                        # × occupies the last 2 columns of the tab (right padding is 1)
+                        if sx >= r.right - 2:
+                            terminal._tabs.active = pane_id
+                            self.run_worker(terminal.close_active_tab(), exclusive=False)
+                        break
+            except Exception:
+                pass
+
+    async def _show_tab_context_menu(self, x: int, y: int) -> None:
+        """Show a right-click context menu for the editor tab bar."""
+        editor = self.query_one(EditorPanel)
+        items: list[ChoiceItem] = []
+        if editor.active_document is not None:
+            items.append(ChoiceItem("tab.save", "Save file"))
+        items.append(ChoiceItem("tab.close", "Close tab"))
+
+        action_id = await self.wait_for_screen_result(ContextMenuScreen(items, x, y))
+        if action_id == "tab.save":
+            self.action_save_file()
+        elif action_id == "tab.close":
+            await self.action_close_tab()
 
     async def _show_editor_context_menu(self, x: int, y: int) -> None:
         """Build and show the right-click context menu for the editor."""
@@ -617,7 +800,10 @@ class TuideApp(App[None]):
         """Close the active editor tab."""
         editor = self.query_one(EditorPanel)
         active_document = editor.active_document
+
         if active_document is None:
+            # Virtual or Welcome tab — delegate directly (no dirty check needed)
+            await self._close_active_tab_after_confirm()
             return
 
         if active_document.dirty:
@@ -653,12 +839,25 @@ class TuideApp(App[None]):
         self.call_after_refresh(self.exit)
 
     def action_restart_terminal(self) -> None:
-        """Restart the embedded terminal when available."""
-        restarted = self.query_one(TerminalPanel).restart()
+        """Restart the active terminal tab when available."""
+        restarted = self.query_one(TerminalPanel).restart_active()
         if restarted:
             self.notify("Terminal restarted")
         else:
             self.notify("Embedded terminal unavailable", severity="warning")
+
+    def action_new_terminal_tab(self) -> None:
+        """Open a new terminal tab."""
+        self.run_worker(self.query_one(TerminalPanel).new_tab(), exclusive=False)
+
+    def action_close_terminal_tab(self) -> None:
+        """Close the active terminal tab."""
+        self.run_worker(self._close_terminal_tab(), exclusive=False)
+
+    async def _close_terminal_tab(self) -> None:
+        closed = await self.query_one(TerminalPanel).close_active_tab()
+        if not closed:
+            self.notify("Cannot close the last terminal tab", severity="warning")
 
     def action_escape_focus(self) -> None:
         """Return focus to the editor when no modal is active."""
@@ -690,7 +889,9 @@ class TuideApp(App[None]):
             CommandItem("python.symbol", "Python symbol details", "Show definitions and usages for the symbol at the cursor"),
             CommandItem("code.definition", "Go to definition", "Run code-intelligence definition action"),
             CommandItem("code.references", "Find references", "Run code-intelligence references action"),
-            CommandItem("terminal.restart", "Restart terminal", "Restart the embedded terminal session"),
+            CommandItem("terminal.restart", "Restart terminal", "Restart the active terminal tab"),
+            CommandItem("terminal.new_tab", "New terminal tab", "Open a new terminal tab"),
+            CommandItem("terminal.close_tab", "Close terminal tab", "Close the active terminal tab"),
         ]
 
     async def action_show_command_palette(self) -> None:
@@ -717,8 +918,10 @@ class TuideApp(App[None]):
                 ChoiceItem("search.find_workspace", "Search workspace"),
             ]
             title = "Workspace actions"
-        elif focused_id in {"terminal-panel", "embedded-terminal", "terminal-fallback"}:
+        elif focused_id == "terminal-panel" or focused_id.startswith("embedded-terminal") or focused_id.startswith("terminal-fallback"):
             items = [
+                ChoiceItem("terminal.new_tab", "New terminal tab"),
+                ChoiceItem("terminal.close_tab", "Close terminal tab"),
                 ChoiceItem("terminal.restart", "Restart terminal"),
                 ChoiceItem("view.toggle_terminal", "Hide terminal panel"),
             ]
@@ -770,6 +973,8 @@ class TuideApp(App[None]):
             "code.definition": self.action_code_goto_definition,
             "code.references": self.action_code_find_references,
             "terminal.restart": self._run_restart_terminal,
+            "terminal.new_tab": self.action_new_terminal_tab,
+            "terminal.close_tab": self.action_close_terminal_tab,
         }
         if command_id == "view.toggle_workspace":
             self.action_toggle_workspace()

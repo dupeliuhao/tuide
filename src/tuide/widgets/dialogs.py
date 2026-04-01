@@ -6,6 +6,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.events import Key
+from textual.geometry import Spacing
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, OptionList
 from textual.widgets.option_list import Option
@@ -570,12 +571,22 @@ class ContextMenuScreen(EscapeDismissMixin, ModalScreen[str | None]):
             )
 
     def on_mount(self) -> None:
-        sw, sh = self.screen.size
-        menu_w, menu_h = 38, min(len(self._items) + 2, 20)
-        x = min(self._x, sw - menu_w - 1)
-        y = min(self._y, sh - menu_h - 1)
-        self.query_one("#context-menu").styles.offset = (x, y)
+        self.call_after_refresh(self._position_menu)
         self.query_one("#context-menu-list", OptionList).focus()
+
+    def _position_menu(self) -> None:
+        sw, sh = self.app.size
+        menu_w, menu_h = 38, len(self._items) + 2
+        x = min(self._x, max(0, sw - menu_w - 1))
+        y = min(self._y, max(0, sh - menu_h - 1))
+        menu = self.query_one("#context-menu")
+        menu.styles.margin = Spacing(y, 0, 0, x)
+
+    def on_mouse_up(self, event) -> None:
+        """Dismiss when clicking outside the menu box."""
+        menu = self.query_one("#context-menu")
+        if not menu.region.contains(event.screen_x, event.screen_y):
+            self.dismiss(None)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self.dismiss(event.option_id)
