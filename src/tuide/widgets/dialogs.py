@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.events import Key
 from textual.geometry import Spacing
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, OptionList, Static
+from textual.widgets import Button, Input, Label, ListItem, ListView, OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 
 from tuide.models import ChoiceItem, CommandItem
@@ -679,3 +680,217 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int] | Non
         idx = int(event.option_id)
         path_str, line, _snippet = self._results[idx]
         self.dismiss((path_str, line))
+
+
+class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
+    """Full-featured commit screen: file list, diff preview, message input."""
+
+    CSS = """
+    GitCommitScreen {
+        align: center middle;
+    }
+
+    #commit-dialog {
+        width: 92%;
+        height: 88%;
+        border: solid #30363d;
+        background: #161b22;
+    }
+
+    #commit-title-bar {
+        height: 1;
+        background: #21262d;
+        color: #e6edf3;
+        padding: 0 1;
+        text-style: bold;
+        dock: top;
+    }
+
+    #commit-body {
+        height: 1fr;
+    }
+
+    #file-panel {
+        width: 32%;
+        border-right: solid #21262d;
+    }
+
+    #file-panel-header {
+        height: 1;
+        background: #21262d;
+        color: #8b949e;
+        padding: 0 1;
+    }
+
+    #file-list {
+        height: 1fr;
+        background: #0d1117;
+        border: none;
+        padding: 0;
+    }
+
+    #file-list > ListItem {
+        background: #0d1117;
+        padding: 0 1;
+    }
+
+    #file-list > ListItem.--highlight {
+        background: #1f2d3d;
+    }
+
+    #file-list > ListItem:hover {
+        background: #161b22;
+    }
+
+    #diff-panel {
+        width: 1fr;
+    }
+
+    #diff-header {
+        height: 1;
+        background: #21262d;
+        color: #8b949e;
+        padding: 0 1;
+    }
+
+    #diff-view {
+        height: 1fr;
+        border: none;
+        background: #0d1117;
+    }
+
+    #message-area {
+        height: 7;
+        border-top: solid #21262d;
+        padding: 0 1;
+    }
+
+    #message-label {
+        height: 1;
+        color: #8b949e;
+        padding-top: 0;
+    }
+
+    #message-input {
+        height: 3;
+        border: solid #30363d;
+        background: #0d1117;
+        color: #e6edf3;
+    }
+
+    #commit-actions {
+        height: 3;
+        align: right middle;
+        padding: 0 1;
+        dock: bottom;
+    }
+
+    #cancel-btn {
+        background: #21262d;
+        border: solid #30363d;
+        color: #8b949e;
+        margin-right: 1;
+    }
+
+    #do-commit-btn {
+        background: #1a7f37;
+        border: solid #2ea043;
+        color: #ffffff;
+    }
+
+    #do-commit-btn:hover {
+        background: #2ea043;
+    }
+
+    .no-changes-label {
+        color: #6e7681;
+        padding: 1;
+    }
+    """
+
+    _STATUS_COLORS: dict[str, str] = {
+        "M": "#f7c96a",
+        "A": "#57ab5a",
+        "D": "#e5534b",
+        "R": "#79c0ff",
+        "C": "#79c0ff",
+        "?": "#6e7681",
+        "!": "#6e7681",
+    }
+
+    def __init__(self, repo_root: Path, git_service) -> None:
+        super().__init__()
+        self.repo_root = repo_root
+        self.git_service = git_service
+        self._files: list[tuple[str, str]] = []  # (xy_status, filepath)
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="commit-dialog"):
+            yield Label("Git Commit", id="commit-title-bar")
+            with Horizontal(id="commit-body"):
+                with Vertical(id="file-panel"):
+                    yield Label("Changes", id="file-panel-header")
+                    yield ListView(id="file-list")
+                with Vertical(id="diff-panel"):
+                    yield Label("Select a file to preview its diff", id="diff-header")
+                    yield TextArea("", read_only=True, id="diff-view")
+            with Vertical(id="message-area"):
+                yield Label("Commit message", id="message-label")
+                yield Input(placeholder="Enter commit message…", id="message-input")
+            with Horizontal(id="commit-actions"):
+                yield Button("Cancel", id="cancel-btn")
+                yield Button("Commit", id="do-commit-btn")
+
+    def on_mount(self) -> None:
+        self._refresh_file_list()
+        try:
+            self.query_one("#file-list", ListView).focus()
+        except Exception:
+            pass
+
+    def _refresh_file_list(self) -> None:
+        self._files = self.git_service.status_porcelain(self.repo_root)
+        file_list = self.query_one("#file-list", ListView)
+        file_list.clear()
+        if not self._files:
+            file_list.append(ListItem(Label("No changes to commit", classes="no-changes-label")))
+            return
+        header = self.query_one("#file-panel-header", Label)
+        header.update(f"Changes ({len(self._files)})")
+        for xy, filepath in self._files:
+            display = self._format_status_line(xy, filepath)
+            file_list.append(ListItem(Static(display, markup=True)))
+
+    def _format_status_line(self, xy: str, filepath: str) -> str:
+        x, y = xy[0], xy[1] if len(xy) > 1 else " "
+        # Show the most informative status letter
+        letter = x if x.strip() else y
+        color = self._STATUS_COLORS.get(letter.upper(), "#c9d1d9")
+        filename = Path(filepath).name
+        parent = str(Path(filepath).parent) if Path(filepath).parent != Path(".") else ""
+        if parent:
+            return f"[bold {color}]{xy}[/]  [dim]{parent}/[/][default]{filename}[/]"
+        return f"[bold {color}]{xy}[/]  {filename}"
+
+    @on(ListView.Highlighted)
+    def _on_file_highlighted(self, event: ListView.Highlighted) -> None:
+        idx = event.list_view.index
+        if idx is None or idx >= len(self._files):
+            return
+        xy, filepath = self._files[idx]
+        self.query_one("#diff-header", Label).update(f"  {filepath}")
+        diff = self.git_service.file_diff_workdir(self.repo_root, filepath)
+        self.query_one("#diff-view", TextArea).load_text(diff)
+
+    @on(Button.Pressed, "#cancel-btn")
+    def _on_cancel(self) -> None:
+        self.dismiss(None)
+
+    @on(Button.Pressed, "#do-commit-btn")
+    def _on_commit(self) -> None:
+        message = self.query_one("#message-input", Input).value.strip()
+        if not message:
+            self.notify("Commit message cannot be empty", severity="warning")
+            self.query_one("#message-input", Input).focus()
+            return
+        self.dismiss(message)

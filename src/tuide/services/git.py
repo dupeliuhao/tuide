@@ -286,6 +286,41 @@ class GitService:
                 entries.append((status, parts[1], None))
         return entries
 
+    def status_porcelain(self, repo_root: Path) -> list[tuple[str, str]]:
+        """Return (XY_status, filepath) pairs for all changed files."""
+        result = self._run(repo_root, ["status", "--porcelain"])
+        if result is None:
+            return []
+        files: list[tuple[str, str]] = []
+        for line in result.stdout.splitlines():
+            if len(line) < 3:
+                continue
+            xy = line[:2]
+            filepath = line[3:].strip()
+            if " -> " in filepath:
+                filepath = filepath.split(" -> ")[-1]
+            files.append((xy, filepath))
+        return files
+
+    def file_diff_workdir(self, repo_root: Path, filepath: str) -> str:
+        """Return unified diff of a file vs HEAD (staged + unstaged)."""
+        result = self._run(repo_root, ["diff", "HEAD", "--", filepath])
+        if result is not None and result.stdout.strip():
+            return result.stdout
+        # For untracked or fully-staged new files, fall back to cached diff
+        result = self._run(repo_root, ["diff", "--cached", "HEAD", "--", filepath])
+        if result is not None and result.stdout.strip():
+            return result.stdout
+        # Last resort: show raw file content as additions
+        full_path = repo_root / filepath
+        if full_path.exists():
+            try:
+                lines = full_path.read_text(encoding="utf-8", errors="replace").splitlines()
+                return "\n".join(f"+{l}" for l in lines)
+            except Exception:
+                pass
+        return "(No diff available)"
+
     def push(self, repo_root: Path) -> tuple[bool, str]:
         """Push the current branch to its configured upstream."""
         return self._run_with_error(repo_root, ["push"])

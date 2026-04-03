@@ -27,6 +27,7 @@ from tuide.widgets.dialogs import (
     ConfirmDialog,
     ContextMenuScreen,
     FindReferencesScreen,
+    GitCommitScreen,
     HelpDialog,
     OptionPickerDialog,
     PromptDialog,
@@ -1490,15 +1491,11 @@ class TuideApp(App[None]):
 
         if action_id == "git.session.commit":
             message = await self.wait_for_screen_result(
-                PromptDialog("Commit changes", placeholder="commit message")
+                GitCommitScreen(repo_root, self.git_service)
             )
             if not message:
                 return
-            cleaned_message = message.strip()
-            if not cleaned_message:
-                self.notify("Commit message cannot be empty", severity="warning")
-                return
-            success, output = self.git_service.commit_all(repo_root, cleaned_message)
+            success, output = self.git_service.commit_all(repo_root, str(message))
             await self.open_git_output_tab("git:commit", repo_root, output)
             self.notify("Commit created" if success else "Commit failed", severity="information" if success else "error")
             return
