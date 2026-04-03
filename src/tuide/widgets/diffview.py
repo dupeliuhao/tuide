@@ -41,6 +41,7 @@ def _run_delta(left_title: str, left_text: str, right_title: str, right_text: st
             [
                 "delta",
                 f"--width={width}",
+                "--side-by-side",
                 "--line-numbers",
                 "--hunk-header-style=file line-number syntax",
                 "--hunk-header-decoration-style=box",
