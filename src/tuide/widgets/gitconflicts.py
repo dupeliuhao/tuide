@@ -235,11 +235,11 @@ class GitConflictResolverView(Vertical):
                 )
                 with Horizontal(id="conflict-diff-row"):
                     with Vertical(classes="conflict-diff-pane"):
-                        yield Label("Current", id="conflict-left-title", classes="conflict-diff-title")
+                        yield Label("Ours", id="conflict-left-title", classes="conflict-diff-title")
                         with VerticalScroll(classes="conflict-diff-scroll"):
                             yield Static("", id="conflict-left-diff", classes="conflict-diff-content")
                     with Vertical(classes="conflict-diff-pane"):
-                        yield Label("Incoming", id="conflict-right-title", classes="conflict-diff-title")
+                        yield Label("Theirs", id="conflict-right-title", classes="conflict-diff-title")
                         with VerticalScroll(classes="conflict-diff-scroll"):
                             yield Static("", id="conflict-right-diff", classes="conflict-diff-content")
                 yield Label("Resolved result", id="conflict-resolution-title")
@@ -319,8 +319,8 @@ class GitConflictResolverView(Vertical):
         if conflict_file is None:
             file_label.update("No conflicted files remain. Continue to finish the operation or abort it.")
             block_label.update("")
-            left_title.update("Current")
-            right_title.update("Incoming")
+            left_title.update("Ours")
+            right_title.update("Theirs")
             left_diff.update("All current conflict markers are resolved.")
             right_diff.update("")
             resolution.load_text("")
@@ -339,8 +339,8 @@ class GitConflictResolverView(Vertical):
                 block = self._current_block()
             else:
                 block_label.update("No inline conflict markers detected. Use full-file editing, then Mark Resolved.")
-                left_title.update("Current")
-                right_title.update("Incoming")
+                left_title.update("Ours")
+                right_title.update("Theirs")
                 left_diff.update(
                     "This file is still marked conflicted by Git, but tuide could not parse inline markers."
                 )
@@ -353,8 +353,10 @@ class GitConflictResolverView(Vertical):
                 return
 
         blocks.highlighted = self._selected_block
-        left_title.update(block.ours_label or "Current")
-        right_title.update(block.theirs_label or "Incoming")
+        ours_label = block.ours_label or "Current"
+        theirs_label = block.theirs_label or "Incoming"
+        left_title.update(f"Ours  [{ours_label}]")
+        right_title.update(f"Theirs  [{theirs_label}]")
         left_rich = _build_conflict_candidate_text(
             block.ours_text,
             line_style=_CONFLICT_LEFT_LINE,
