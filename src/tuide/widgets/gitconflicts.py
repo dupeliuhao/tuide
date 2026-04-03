@@ -11,7 +11,22 @@ from textual.widgets import Button, Label, OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 
 from tuide.models import GitConflictState
-from tuide.widgets.diffview import _build_diff_markup
+from rich.text import Text
+
+
+_CONFLICT_LEFT_LINE = "#ffd7ba on #2a1b14"
+_CONFLICT_RIGHT_LINE = "#c9e7ff on #122433"
+_CONFLICT_GUTTER = "dim #6e7681"
+
+
+def _build_conflict_candidate_text(text: str, *, line_style: str) -> Text:
+    """Render one candidate side of a conflict without +/- diff semantics."""
+    rich = Text(no_wrap=True, overflow="fold")
+    lines = text.splitlines() or [""]
+    for line_number, line in enumerate(lines, start=1):
+        rich.append(f"{line_number:4} │ ", style=_CONFLICT_GUTTER)
+        rich.append(f"{line}\n", style=line_style)
+    return rich
 
 
 class GitConflictResolverView(Vertical):
@@ -77,6 +92,13 @@ class GitConflictResolverView(Vertical):
         background: #0d1117;
     }
 
+    #conflict-hint {
+        height: auto;
+        padding: 0 1;
+        color: #6e7681;
+        background: #0d1117;
+    }
+
     #conflict-blocks-panel {
         height: 9;
         border-bottom: solid #21262d;
@@ -131,16 +153,6 @@ class GitConflictResolverView(Vertical):
         border: none;
     }
     """
-
-    class ApplyChoice(Message):
-        """Apply a one-click resolution to the selected conflict block."""
-
-        def __init__(self, repo_root: Path, filepath: str, block_index: int, choice: str) -> None:
-            super().__init__()
-            self.repo_root = repo_root
-            self.filepath = filepath
-            self.block_index = block_index
-            self.choice = choice
 
     class ApplyEditedResult(Message):
         """Apply custom edited resolution text to the selected block."""
@@ -217,6 +229,10 @@ class GitConflictResolverView(Vertical):
                     yield Label("Conflict blocks", id="conflict-blocks-title")
                     yield OptionList(*self._block_options(), id="conflict-blocks")
                 yield Static("", id="conflict-selected-block")
+                yield Static(
+                    "Top panes are read-only. Edit the final resolved text below, then apply it.",
+                    id="conflict-hint",
+                )
                 with Horizontal(id="conflict-diff-row"):
                     with Vertical(classes="conflict-diff-pane"):
                         yield Label("Current", id="conflict-left-title", classes="conflict-diff-title")
@@ -229,9 +245,9 @@ class GitConflictResolverView(Vertical):
                 yield Label("Resolved result", id="conflict-resolution-title")
                 yield TextArea("", id="conflict-resolution")
                 with Horizontal(id="conflict-action-row"):
-                    yield Button("Accept Ours", id="conflict-ours", variant="primary")
-                    yield Button("Accept Theirs", id="conflict-theirs")
-                    yield Button("Accept Both", id="conflict-both")
+                    yield Button("Use Ours", id="conflict-ours", variant="primary")
+                    yield Button("Use Theirs", id="conflict-theirs")
+                    yield Button("Use Both", id="conflict-both")
                     yield Button("Apply Edited Result", id="conflict-apply-edited", variant="success")
                     yield Button("Edit Full File", id="conflict-edit")
                     yield Button("Mark Resolved", id="conflict-mark", variant="success")
@@ -339,9 +355,13 @@ class GitConflictResolverView(Vertical):
         blocks.highlighted = self._selected_block
         left_title.update(block.ours_label or "Current")
         right_title.update(block.theirs_label or "Incoming")
-        left_rich, right_rich = _build_diff_markup(
-            block.ours_text.splitlines(),
-            block.theirs_text.splitlines(),
+        left_rich = _build_conflict_candidate_text(
+            block.ours_text,
+            line_style=_CONFLICT_LEFT_LINE,
+        )
+        right_rich = _build_conflict_candidate_text(
+            block.theirs_text,
+            line_style=_CONFLICT_RIGHT_LINE,
         )
         left_diff.update(left_rich)
         right_diff.update(right_rich)
@@ -408,15 +428,9 @@ class GitConflictResolverView(Vertical):
 
         if button_id == "conflict-ours":
             resolution.load_text(block.ours_text)
-            self.post_message(
-                self.ApplyChoice(self._repo_root, conflict_file.filepath, block.index, "ours")
-            )
             return
         if button_id == "conflict-theirs":
             resolution.load_text(block.theirs_text)
-            self.post_message(
-                self.ApplyChoice(self._repo_root, conflict_file.filepath, block.index, "theirs")
-            )
             return
         if button_id == "conflict-both":
             combined = block.ours_text
@@ -424,9 +438,6 @@ class GitConflictResolverView(Vertical):
                 combined += "\n"
             combined += block.theirs_text
             resolution.load_text(combined)
-            self.post_message(
-                self.ApplyChoice(self._repo_root, conflict_file.filepath, block.index, "both")
-            )
             return
         if button_id == "conflict-apply-edited":
             self.post_message(

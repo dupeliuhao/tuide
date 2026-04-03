@@ -656,6 +656,7 @@ class TuideApp(App[None]):
         self._refresh_branch_indicator()
         self._open_welcome_if_project()
         self.set_interval(5.0, self._refresh_dirty_tree)
+        self.run_worker(self._resume_active_conflict_session(), exclusive=False)
 
     def _open_welcome_if_project(self) -> None:
         """Open a welcome tab showing the project README, if a workspace root exists."""
@@ -1509,6 +1510,17 @@ class TuideApp(App[None]):
         self.refresh_status()
         return True
 
+    async def _resume_active_conflict_session(self) -> None:
+        """Reopen the conflict resolver when the repo is already mid merge/rebase."""
+        repo_root = await asyncio.to_thread(self._find_repo_root)
+        if repo_root is None:
+            return
+        if await self._show_conflict_resolver(repo_root):
+            self.notify(
+                "A merge or rebase is already in progress. Finish it in Git Conflicts or abort it.",
+                severity="warning",
+            )
+
     async def _continue_diverged_update(self, repo_root: Path, strategy: str) -> None:
         """Continue an Update flow with an explicit merge or rebase strategy."""
         if strategy == "rebase":
@@ -1597,6 +1609,12 @@ class TuideApp(App[None]):
             return
 
         if action_id == "git.session.update":
+            if await self._show_conflict_resolver(repo_root):
+                self.notify(
+                    "Finish or abort the current merge/rebase before running Update again.",
+                    severity="warning",
+                )
+                return
             self.notify("Updating current branch…", severity="information")
             result = await asyncio.to_thread(
                 self.git_service.update_current_branch, repo_root
@@ -1785,25 +1803,6 @@ class TuideApp(App[None]):
         await self._show_conflict_resolver(event.repo_root)
         self._refresh_dirty_tree()
 
-    async def on_git_conflict_resolver_view_apply_choice(
-        self,
-        event: GitConflictResolverView.ApplyChoice,
-    ) -> None:
-        """Apply ours/theirs/both to the selected conflict block."""
-        success, output = await asyncio.to_thread(
-            self.git_service.apply_conflict_choice,
-            event.repo_root,
-            event.filepath,
-            event.block_index,
-            event.choice,
-        )
-        if not success:
-            self.notify(output, severity="error")
-            return
-        self._sync_open_file_with_git(event.repo_root, event.repo_root / event.filepath)
-        await self._show_conflict_resolver(event.repo_root)
-        self.notify(output)
-
     async def on_git_conflict_resolver_view_apply_edited_result(
         self,
         event: GitConflictResolverView.ApplyEditedResult,
@@ -1834,7 +1833,7 @@ class TuideApp(App[None]):
             return
         await self._open_location(path, event.start_line, 1)
         self.notify(
-            "Opened the full file. You can still resolve the current block inline in Git Conflicts if you prefer.",
+            "Opened the real conflicted file. Git markers in that file are expected until you finish resolving or abort the operation.",
             severity="information",
         )
 
