@@ -12,11 +12,10 @@ from textual.containers import Horizontal, Vertical
 from textual.events import Key
 from textual.geometry import Spacing
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, ListItem, ListView, OptionList, Static
+from textual.widgets import Button, Input, Label, ListItem, ListView, OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 
 from tuide.models import ChoiceItem, CommandItem
-from tuide.widgets.diffview import DiffView
 
 
 class EscapeDismissMixin:
@@ -768,16 +767,31 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         background: #0d1117;
     }
 
-    #diff-container DiffView {
+    #diff-container Horizontal {
         height: 1fr;
     }
 
-    #diff-container .diff-pane {
+    .commit-diff-pane {
+        width: 1fr;
         height: 1fr;
+        border-right: solid #21262d;
+    }
+
+    .commit-diff-pane-header {
+        height: 1;
+        background: #21262d;
+        color: #8b949e;
+        padding: 0 1;
+    }
+
+    .commit-diff-pane TextArea {
+        height: 1fr;
+        border: none;
+        background: #0d1117;
     }
 
     #message-area {
-        height: 5;
+        height: 4;
         border-top: solid #21262d;
         padding: 0 1;
     }
@@ -796,22 +810,27 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
     }
 
     #commit-actions {
-        height: 3;
+        height: 1;
         align: right middle;
         padding: 0 1;
         border-top: solid #21262d;
     }
 
+    #commit-actions Button {
+        height: 1;
+        border: none;
+        padding: 0 2;
+        min-width: 10;
+    }
+
     #cancel-btn {
         background: #21262d;
-        border: solid #30363d;
         color: #8b949e;
         margin-right: 1;
     }
 
     #discard-btn {
         background: #6e1a1a;
-        border: solid #e5534b;
         color: #e5534b;
         margin-right: 1;
     }
@@ -822,7 +841,6 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
 
     #do-commit-btn {
         background: #1a7f37;
-        border: solid #2ea043;
         color: #ffffff;
     }
 
@@ -852,6 +870,7 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         self.git_service = git_service
         self._files: list[tuple[str, str]] = []  # (xy_status, filepath)
         self._current_diff_index: int | None = None
+        self._current_filepath: Path | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="commit-dialog"):
@@ -903,16 +922,23 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         self.run_worker(self._load_diff(index), exclusive=True, group="diff-render")
 
     async def _load_diff(self, index: int | None) -> None:
-        header = self.query_one("#diff-header", Label)
-        container = self.query_one("#diff-container", Vertical)
+        from tuide.widgets.editor import _apply_language, build_editor_theme, detect_language
+
+        try:
+            header = self.query_one("#diff-header", Label)
+            container = self.query_one("#diff-container", Vertical)
+        except Exception:
+            return  # screen already dismissed
+
         await container.remove_children()
+        self._current_filepath = None
 
         if index is None or index < 0 or index >= len(self._files):
             header.update("Select a file to preview its diff")
             return
 
         _xy, filepath = self._files[index]
-        header.update(f"  {filepath}")
+        header.update(f"  HEAD  ←  {filepath}")
 
         full_path = self.repo_root / filepath
         left_text = await asyncio.to_thread(
@@ -922,8 +948,33 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
             lambda: full_path.read_text(encoding="utf-8", errors="replace") if full_path.exists() else ""
         )
 
-        diff_widget = DiffView("HEAD", left_text, filepath, right_text)
-        await container.mount(diff_widget)
+        try:
+            container = self.query_one("#diff-container", Vertical)
+        except Exception:
+            return  # dismissed while fetching
+
+        language = detect_language(full_path)
+        theme = build_editor_theme()
+
+        left_ta = TextArea(left_text, read_only=True, id="diff-left", soft_wrap=False)
+        right_ta = TextArea(right_text, read_only=False, id="diff-right", soft_wrap=False)
+        for ta in (left_ta, right_ta):
+            _apply_language(ta, language)
+            try:
+                ta.register_theme(theme)
+                ta.theme = "tuide_code"
+            except Exception:
+                pass
+            ta.show_line_numbers = True
+
+        panes = Horizontal(
+            Vertical(Label("HEAD (remote)", classes="commit-diff-pane-header"), left_ta,
+                     classes="commit-diff-pane"),
+            Vertical(Label("Working tree (editable)", classes="commit-diff-pane-header"), right_ta,
+                     classes="commit-diff-pane"),
+        )
+        await container.mount(panes)
+        self._current_filepath = full_path
 
     def _format_status_line(self, xy: str, filepath: str) -> str:
         x, y = xy[0], xy[1] if len(xy) > 1 else " "
@@ -943,6 +994,16 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
     @on(ListView.Selected, "#file-list")
     def _on_file_selected(self, event: ListView.Selected) -> None:
         self._show_diff(event.list_view.index)
+
+    @on(TextArea.Changed, "#diff-right")
+    def _on_diff_right_changed(self, event: TextArea.Changed) -> None:
+        """Auto-save edits made in the working-tree pane so commits pick them up."""
+        if self._current_filepath is None:
+            return
+        try:
+            self._current_filepath.write_text(event.text_area.text, encoding="utf-8")
+        except Exception:
+            pass
 
     @on(Button.Pressed, "#discard-btn")
     def _on_discard(self) -> None:
