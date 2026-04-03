@@ -761,7 +761,11 @@ class TuideApp(App[None]):
     @on(GitCommitScreen.FileDiscarded)
     def _on_file_discarded(self, event: GitCommitScreen.FileDiscarded) -> None:
         """Reload the editor tab after a file is restored to HEAD via Discard."""
-        self.query_one(EditorPanel).reload_file(event.path)
+        try:
+            editor = self.screen_stack[0].query_one(EditorPanel)
+        except Exception:
+            return
+        editor.reload_file(event.path)
         self.refresh_status()
 
     async def _open_editor_file(self, path: Path) -> None:
