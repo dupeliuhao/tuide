@@ -351,15 +351,16 @@ class TuideApp(App[None]):
         color: #6e7681;
     }
 
-    Tabs {
-        background: #0d1117;
-        border-bottom: none;
+    /* Editor tab bar (custom WrappingTabBar replaces the built-in Tabs) */
+    #editor-tabs > Tabs {
+        display: none;
+        height: 0;
     }
 
-    Tabs #tabs-list,
-    Tabs #tabs-list-bar,
-    Tabs #tabs-scroll {
+    #editor-tab-bar {
+        width: 1fr;
         background: #0d1117;
+        border-bottom: solid #21262d;
     }
 
     TabPane {
@@ -367,27 +368,32 @@ class TuideApp(App[None]):
         padding: 0;
     }
 
-    Tab {
+    /* Terminal still uses the built-in Tabs widget */
+    #terminal-tabs > Tabs {
+        background: #0d1117;
+        border-bottom: none;
+    }
+
+    #terminal-tabs > Tabs #tabs-list,
+    #terminal-tabs > Tabs #tabs-list-bar,
+    #terminal-tabs > Tabs #tabs-scroll {
+        background: #0d1117;
+    }
+
+    #terminal-tabs Tab {
         background: #0d1117;
         color: #8b949e;
         max-width: 28;
     }
 
-    Tab.-active {
+    #terminal-tabs Tab.-active {
         background: #0d1117;
         color: #e6edf3;
-        max-width: 28;
     }
 
-    Tab:hover {
+    #terminal-tabs Tab:hover {
         background: #161b22;
         color: #c9d1d9;
-    }
-
-    /* Constrain the scroll track so the Tabs widget clips at the panel edge */
-    #editor-tabs > Tabs,
-    #editor-tabs > Tabs > #tabs-scroll {
-        width: 1fr;
     }
 
     DirectoryTree {
@@ -838,9 +844,9 @@ class TuideApp(App[None]):
         if not editor.region.contains(event.screen_x, event.screen_y):
             return
 
-        # Right-click on the tab bar → tab context menu
+        # Right-click on the wrapping tab bar → tab context menu
         try:
-            tab_bar = editor.tabbed_content.query_one("Tabs")
+            tab_bar = editor.query_one("WrappingTabBar")
             if tab_bar.region.contains(event.screen_x, event.screen_y):
                 self.run_worker(
                     self._show_tab_context_menu(event.screen_x, event.screen_y),
@@ -877,23 +883,7 @@ class TuideApp(App[None]):
         except Exception:
             return
         if editor.region.contains(sx, sy):
-            try:
-                tabs_bar = editor.tabbed_content.query_one("Tabs")
-                if tabs_bar.region.contains(sx, sy):
-                    for tab in tabs_bar.query("Tab"):
-                        r = tab.region
-                        if not r.contains(sx, sy):
-                            continue
-                        pane_id = tab.id.removeprefix(_PREFIX)
-                        if pane_id == "welcome-tab":
-                            break
-                        # × occupies the last 2 columns of the tab (right padding is 1)
-                        if sx >= r.right - 2:
-                            editor.tabbed_content.active = pane_id
-                            self.run_worker(self.action_close_tab(), exclusive=False)
-                        break
-            except Exception:
-                pass
+            # WrappingTabBar handles its own × clicks; nothing to do here.
             return
         try:
             terminal = self.query_one(TerminalPanel)
