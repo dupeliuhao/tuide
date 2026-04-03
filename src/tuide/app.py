@@ -124,12 +124,8 @@ class ShortcutBar(Widget):
     def on_click(self, event) -> None:
         for start, end, action in self._regions:
             if start <= event.x < end:
-                method = getattr(self.app, f"action_{action}", None)
-                if method is not None:
-                    result = method()
-                    if asyncio.iscoroutine(result):
-                        self.run_worker(result, exclusive=False)
                 event.stop()
+                self.app.run_action(action)
                 return
 
 
@@ -659,6 +655,7 @@ class TuideApp(App[None]):
         self.sync_splitter_visibility()
         self._refresh_branch_indicator()
         self._open_welcome_if_project()
+        self.set_interval(5.0, self._refresh_dirty_tree)
 
     def _open_welcome_if_project(self) -> None:
         """Open a welcome tab showing the project README, if a workspace root exists."""
@@ -692,6 +689,27 @@ class TuideApp(App[None]):
         if not self.is_mounted:
             return
         self.run_worker(self._fetch_branch_async(), exclusive=True, group="branch-refresh")
+
+    def _refresh_dirty_tree(self) -> None:
+        """Periodically refresh dirty-file markers in the workspace tree."""
+        if not self.is_mounted:
+            return
+        self.run_worker(self._fetch_dirty_paths_async(), exclusive=True, group="dirty-tree")
+
+    async def _fetch_dirty_paths_async(self) -> None:
+        """Fetch changed files from git and update the workspace tree markers."""
+        import asyncio
+        repo_root = await asyncio.to_thread(self._find_repo_root)
+        if repo_root is None:
+            return
+        files: list[tuple[str, str]] = await asyncio.to_thread(
+            self.git_service.status_porcelain, repo_root
+        )
+        dirty: set[str] = {str(repo_root / filepath) for _xy, filepath in files}
+        try:
+            self.query_one(WorkspacePanel).set_dirty_paths(dirty)
+        except Exception:
+            pass
 
     async def _fetch_branch_async(self) -> None:
         """Fetch current branch in a thread and update the indicator."""
@@ -741,10 +759,39 @@ class TuideApp(App[None]):
             if result:
                 on_confirm()
 
-        self.push_screen(
+        self._push_modal_screen(
             ConfirmDialog(title, message, confirm_label=confirm_label),
             callback=_resolve,
         )
+
+    def _restore_focus_after_modal(self, previous_focus: Widget | None) -> None:
+        """Return focus to the prior widget or a stable main-view fallback."""
+        if len(self.screen_stack) > 1:
+            return
+
+        if (
+            previous_focus is not None
+            and previous_focus.is_mounted
+            and previous_focus.screen is self.screen_stack[0]
+        ):
+            previous_focus.focus()
+            return
+
+        try:
+            self.query_one(EditorPanel).focus()
+        except Exception:
+            self.focus()
+
+    def _push_modal_screen(self, screen, callback=None) -> None:
+        """Push a modal and restore main-view focus when it closes."""
+        previous_focus = self.focused
+
+        def _resolve(result: object | None) -> None:
+            if callback is not None:
+                callback(result)
+            self.call_after_refresh(self._restore_focus_after_modal, previous_focus)
+
+        self.push_screen(screen, callback=_resolve)
 
     async def wait_for_screen_result(self, screen) -> object | None:
         """Push a screen and wait for its dismissal result without requiring a worker."""
@@ -755,7 +802,7 @@ class TuideApp(App[None]):
             if not future.done():
                 future.set_result(result)
 
-        self.push_screen(screen, callback=_resolve)
+        self._push_modal_screen(screen, callback=_resolve)
         return await future
 
     @on(GitCommitScreen.FileDiscarded)
@@ -767,6 +814,7 @@ class TuideApp(App[None]):
             return
         editor.reload_file(event.path)
         self.refresh_status()
+        self._refresh_dirty_tree()
 
     async def _open_editor_file(self, path: Path) -> None:
         """Open a file in the editor, supplying git HEAD text for dirty tracking."""
@@ -1152,7 +1200,7 @@ class TuideApp(App[None]):
 
     def action_show_help(self) -> None:
         """Show the keybinding help overlay."""
-        self.push_screen(HelpDialog())
+        self._push_modal_screen(HelpDialog())
 
     def command_items(self) -> list[CommandItem]:
         """Return palette commands."""
@@ -1443,6 +1491,13 @@ class TuideApp(App[None]):
         await editor.open_readonly_tab(title, text)
         self.refresh_status()
 
+    def _git_error_summary(self, action: str, output: str) -> str:
+        """Return a compact notification message for a failed Git action."""
+        first_line = output.splitlines()[0].strip() if output else ""
+        if not first_line:
+            first_line = "unknown error"
+        return f"{action} failed: {first_line}"
+
     async def action_git_session(self) -> None:
         """Open project-level Git actions from the top bar."""
         repo_root = self.active_repo_root()
@@ -1512,14 +1567,20 @@ class TuideApp(App[None]):
             self.notify("Pulling…", severity="information")
             success, output = await asyncio.to_thread(self.git_service.pull, repo_root)
             await self.open_git_output_tab("git:update", repo_root, output)
-            self.notify("Project updated" if success else "Git pull failed", severity="information" if success else "error")
+            self.notify(
+                "Project updated" if success else self._git_error_summary("Git pull", output),
+                severity="information" if success else "error",
+            )
             return
 
         if action_id == "git.session.fetch":
             self.notify("Fetching…", severity="information")
             success, output = await asyncio.to_thread(self.git_service.fetch, repo_root)
             await self.open_git_output_tab("git:fetch", repo_root, output)
-            self.notify("Fetch completed" if success else "Fetch failed", severity="information" if success else "error")
+            self.notify(
+                "Fetch completed" if success else self._git_error_summary("Fetch", output),
+                severity="information" if success else "error",
+            )
             return
 
         if action_id == "git.session.branch":
@@ -1564,6 +1625,11 @@ class TuideApp(App[None]):
             )
             await self.open_git_output_tab("git:commit", repo_root, output)
             if success:
+                self._refresh_dirty_tree()
+                try:
+                    self.query_one(EditorPanel).mark_all_as_clean()
+                except Exception:
+                    pass
                 if push_after:
                     self.notify("Pushing…", severity="information")
                     push_success, push_output = await asyncio.to_thread(
@@ -1591,7 +1657,10 @@ class TuideApp(App[None]):
             self.notify("Pushing…", severity="information")
             success, output = await asyncio.to_thread(self.git_service.push, repo_root)
             await self.open_git_output_tab("git:push", repo_root, output)
-            self.notify("Push completed" if success else "Push failed", severity="information" if success else "error")
+            self.notify(
+                "Push completed" if success else self._git_error_summary("Push", output),
+                severity="information" if success else "error",
+            )
             return
 
     def active_file_context(self) -> tuple[Path, Path] | None:

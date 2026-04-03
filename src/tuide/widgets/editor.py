@@ -536,6 +536,18 @@ class EditorPanel(Vertical):
         doc.dirty = doc.git_head_text is not None and content != doc.git_head_text
         self._sync_tab_bar()
 
+    def mark_all_as_clean(self) -> None:
+        """After a commit, update git_head_text for every open doc to its current content."""
+        for pane_id, doc in self.documents.items():
+            try:
+                ta = self.query_one(f"#editor-{pane_id}", TextArea)
+                current = ta.text
+            except Exception:
+                continue
+            doc.git_head_text = current
+            doc.dirty = False
+        self._sync_tab_bar()
+
     def save_active_file(self) -> Path | None:
         doc = self.active_document
         editor = self.active_text_area

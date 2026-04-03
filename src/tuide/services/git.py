@@ -207,6 +207,26 @@ class GitService:
         """Update the current branch from its upstream."""
         return self._run_with_error(repo_root, ["pull", "--ff-only"], no_prompt=True)
 
+    def _list_remotes(self, repo_root: Path) -> list[str]:
+        """Return configured remote names."""
+        result = self._run(repo_root, ["remote"])
+        if result is None:
+            return []
+        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+    def _preferred_remote(self, repo_root: Path) -> str | None:
+        """Return the preferred remote name for push operations."""
+        push_default = self._run(repo_root, ["config", "--get", "remote.pushDefault"])
+        if push_default is not None:
+            remote = push_default.stdout.strip()
+            if remote:
+                return remote
+
+        remotes = self._list_remotes(repo_root)
+        if "origin" in remotes:
+            return "origin"
+        return remotes[0] if remotes else None
+
     def checkout_branch(self, repo_root: Path, branch: str) -> tuple[bool, str]:
         """Switch the repository to another branch."""
         local_branches = set(self.list_branches(repo_root))
@@ -250,6 +270,7 @@ class GitService:
 
     def branch_history(self, repo_root: Path, limit: int = 200) -> list[GitHistoryEntry]:
         """Return structured history entries for the current branch."""
+        unpushed = self.unpushed_commit_ids(repo_root, limit=limit)
         result = self._run(
             repo_root,
             [
@@ -268,9 +289,50 @@ class GitService:
             parts = line.split("\x1f", 3)
             if len(parts) == 4:
                 entries.append(
-                    GitHistoryEntry(commit=parts[0], date=parts[1], author=parts[2], subject=parts[3])
+                    GitHistoryEntry(
+                        commit=parts[0],
+                        date=parts[1],
+                        author=parts[2],
+                        subject=parts[3],
+                        unpushed=parts[0] in unpushed,
+                    )
                 )
         return entries
+
+    def _upstream_ref(self, repo_root: Path) -> str | None:
+        """Return the current branch upstream ref when one can be resolved."""
+        result = self._run(
+            repo_root,
+            ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+        )
+        if result is not None:
+            upstream = result.stdout.strip()
+            if upstream:
+                return upstream
+
+        branch = self.current_branch(repo_root)
+        remote = self._preferred_remote(repo_root)
+        if not branch or not remote:
+            return None
+
+        candidate = f"refs/remotes/{remote}/{branch}"
+        if self._run(repo_root, ["show-ref", "--verify", candidate]) is None:
+            return None
+        return f"{remote}/{branch}"
+
+    def unpushed_commit_ids(self, repo_root: Path, limit: int = 200) -> set[str]:
+        """Return abbreviated commit ids reachable from HEAD but not upstream."""
+        upstream = self._upstream_ref(repo_root)
+        if upstream is None:
+            return set()
+
+        result = self._run(
+            repo_root,
+            ["rev-list", f"--max-count={limit}", "--abbrev-commit", f"{upstream}..HEAD"],
+        )
+        if result is None:
+            return set()
+        return {line.strip() for line in result.stdout.splitlines() if line.strip()}
 
     def files_changed_in_commit(
         self, repo_root: Path, commit: str
@@ -352,7 +414,25 @@ class GitService:
 
     def push(self, repo_root: Path) -> tuple[bool, str]:
         """Push the current branch to its configured upstream."""
-        return self._run_with_error(repo_root, ["push"], no_prompt=True)
+        success, output = self._run_with_error(repo_root, ["push"], no_prompt=True)
+        if success:
+            return True, output
+
+        branch = self.current_branch(repo_root)
+        remote = self._preferred_remote(repo_root)
+        lower_output = output.lower()
+        if (
+            branch
+            and remote
+            and ("has no upstream branch" in lower_output or "no upstream branch" in lower_output)
+        ):
+            return self._run_with_error(
+                repo_root,
+                ["push", "--set-upstream", remote, branch],
+                no_prompt=True,
+            )
+
+        return False, output
 
     def fetch(self, repo_root: Path) -> tuple[bool, str]:
         """Fetch remote updates without merging."""

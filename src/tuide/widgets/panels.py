@@ -44,8 +44,20 @@ def _file_type_style(path: Path) -> Style | None:
     return _FILE_TYPE_STYLES.get(path.suffix.lower())
 
 
+_DIRTY_STYLE = Style(color="#f7c96a", bold=True)
+
+
 class _NarrowDirectoryTree(DirectoryTree):
     """DirectoryTree with single-width ASCII icons for cross-terminal compatibility."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._dirty_paths: set[str] = set()
+
+    def set_dirty_paths(self, paths: set[str]) -> None:
+        """Update the set of repo-relative dirty file paths and refresh."""
+        self._dirty_paths = paths
+        self.refresh()
 
     def render_label(self, node: TreeNode[DirEntry], base_style: Style, style: Style) -> Text:
         node_label = node._label.copy()
@@ -73,7 +85,13 @@ class _NarrowDirectoryTree(DirectoryTree):
                 self.get_component_rich_style("directory-tree--hidden")
             )
 
-        return Text.assemble(prefix, node_label)
+        dirty_marker = Text("")
+        if not node._allow_expand and node.data is not None:
+            node_str = str(node.data.path)
+            if node_str in self._dirty_paths:
+                dirty_marker = Text(" *", style=_DIRTY_STYLE)
+
+        return Text.assemble(prefix, node_label, dirty_marker)
 
 
 class PanelFrame(Vertical):
@@ -137,6 +155,14 @@ class WorkspacePanel(PanelFrame):
         select.set_options([(str(root), str(root)) for root in workspace_state.roots])
         self.set_active_root(self.primary_root)
         self._sync_root_selector_visibility()
+
+    def set_dirty_paths(self, paths: set[str]) -> None:
+        """Pass a set of absolute path strings for files with uncommitted changes."""
+        try:
+            tree = self.query_one("#workspace-tree", _NarrowDirectoryTree)
+            tree.set_dirty_paths(paths)
+        except Exception:
+            pass
 
     def _sync_root_selector_visibility(self) -> None:
         """Only show the root selector when multiple roots exist."""

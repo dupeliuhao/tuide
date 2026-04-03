@@ -713,7 +713,6 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[tuple[str, bool] | None]):
         color: #e6edf3;
         padding: 0 1;
         text-style: bold;
-        dock: top;
     }
 
     #commit-body {
@@ -797,26 +796,25 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[tuple[str, bool] | None]):
         align: right middle;
         padding: 0 1;
         border-top: solid #21262d;
-        dock: bottom;
     }
 
     #commit-actions Button {
-        min-width: 8;
-        padding: 0 1;
+        height: 1;
+        min-height: 1;
+        min-width: 10;
+        padding: 0 2;
+        border: none;
+        margin-left: 1;
     }
 
     #cancel-btn {
         background: #21262d;
-        border: solid #30363d;
         color: #8b949e;
-        margin-right: 1;
     }
 
     #discard-btn {
         background: #6e1a1a;
-        border: solid #e5534b;
         color: #e5534b;
-        margin-right: 1;
     }
 
     #discard-btn:hover {
@@ -825,7 +823,6 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[tuple[str, bool] | None]):
 
     #do-commit-btn {
         background: #1a7f37;
-        border: solid #2ea043;
         color: #ffffff;
     }
 

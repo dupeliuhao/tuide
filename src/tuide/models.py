@@ -68,3 +68,4 @@ class GitHistoryEntry:
     date: str
     author: str
     subject: str
+    unpushed: bool = False

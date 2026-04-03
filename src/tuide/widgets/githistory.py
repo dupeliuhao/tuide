@@ -14,17 +14,20 @@ from textual.widgets import Label, ListItem, ListView, Static
 class _CommitItem(ListItem):
     """A selectable two-line commit row."""
 
-    def __init__(self, commit: str, date: str, author: str, subject: str) -> None:
+    def __init__(self, commit: str, date: str, author: str, subject: str, unpushed: bool = False) -> None:
         super().__init__()
         self.commit_hash = commit
         self.commit_date = date
         self.commit_author = author
         self.commit_subject = subject
+        self.commit_unpushed = unpushed
 
     def compose(self) -> ComposeResult:
         date_s = self.commit_date[:10] if len(self.commit_date) >= 10 else self.commit_date
+        unpushed_tag = "  [bold #ffb86b]unpushed[/]  " if self.commit_unpushed else ""
         yield Static(
             f"[bold #79c0ff]{self.commit_hash}[/]  "
+            f"{unpushed_tag}"
             f"[dim #8b949e]{date_s}[/]  "
             f"[#e6edf3]{self.commit_subject}[/]",
             markup=True,
@@ -96,7 +99,7 @@ class GitLogView(Vertical):
             markup=True,
         )
         items = [
-            _CommitItem(e.commit, e.date, e.author, e.subject)
+            _CommitItem(e.commit, e.date, e.author, e.subject, e.unpushed)
             for e in self._entries
         ]
         yield ListView(*items, id="git-log-list")
