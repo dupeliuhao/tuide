@@ -881,7 +881,7 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
     def on_mount(self) -> None:
         branch = self.git_service.current_branch(self.repo_root) or "detached"
         self.query_one("#commit-title-bar", Label).update(
-            f"Git Commit  —  {self.repo_root.name}  [{branch}]"
+            f"Git Commit  —  {self.repo_root.name}  \u2387 {branch}"
         )
         self._refresh_file_list()
         try:
