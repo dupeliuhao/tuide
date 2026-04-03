@@ -82,6 +82,7 @@ src/tuide/
 - **Dirty means git-dirty, not unsaved**: yellow tab styling and workspace-tree markers indicate the file differs from `git HEAD`, not that it is waiting to be written to disk.
 - **Commit resets dirty state**: after a successful git commit, open documents should refresh their `git_head_text`, return to the clean styling, and lose workspace dirty markers.
 - **Dismiss must always work**: modal dialogs and popups should reliably return to the main IDE view via `Esc`, `Back`, or `Cancel`. Avoid app-level button routing that can conflict with dialog-local dismissal.
+- **Esc goes back one layer**: `Esc` should dismiss the active modal or popup first; if no overlay is open, it should return focus to the main editor view rather than doing nothing.
 - **Shortcut bar is curated, not exhaustive**: the bottom bar should only show the highest-value shortcuts. Hidden keybindings may still exist, but low-value or redundant actions should stay off the bar.
 
 ## Implementation status
