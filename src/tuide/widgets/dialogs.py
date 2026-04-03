@@ -777,7 +777,7 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
     }
 
     #message-area {
-        height: 7;
+        height: 5;
         border-top: solid #21262d;
         padding: 0 1;
     }
@@ -795,16 +795,11 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         color: #e6edf3;
     }
 
-    #message-hint {
-        height: 1;
-        color: #6e7681;
-    }
-
     #commit-actions {
         height: 3;
         align: right middle;
         padding: 0 1;
-        dock: bottom;
+        border-top: solid #21262d;
     }
 
     #cancel-btn {
@@ -871,7 +866,6 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
             with Vertical(id="message-area"):
                 yield Label("Commit message", id="message-label")
                 yield Input(placeholder="Enter commit message…", id="message-input")
-                yield Label("Press Enter in the message field to commit", id="message-hint")
             with Horizontal(id="commit-actions"):
                 yield Button("Cancel", id="cancel-btn")
                 yield Button("Discard File", id="discard-btn", disabled=True)
