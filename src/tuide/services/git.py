@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -25,10 +26,23 @@ class GitService:
         except (subprocess.CalledProcessError, FileNotFoundError):
             return None
 
+    # Environment that prevents git from blocking on credential prompts.
+    _NO_PROMPT_ENV: dict[str, str] = {
+        **os.environ,
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_ASKPASS": "echo",
+    }
+
     def _run_with_error(
-        self, repo_root: Path, args: list[str]
+        self, repo_root: Path, args: list[str], *, no_prompt: bool = False
     ) -> tuple[bool, str]:
-        """Run a Git command and return success plus combined output."""
+        """Run a Git command and return success plus combined output.
+
+        Pass no_prompt=True for network operations (push/pull/fetch) so git
+        never blocks waiting for credentials in a TUI context.
+        """
+        env = self._NO_PROMPT_ENV if no_prompt else None
+        stdin = subprocess.DEVNULL if no_prompt else None
         try:
             result = subprocess.run(
                 ["git", *args],
@@ -36,6 +50,8 @@ class GitService:
                 capture_output=True,
                 text=True,
                 check=True,
+                env=env,
+                stdin=stdin,
             )
         except FileNotFoundError:
             return False, "Git is not available on PATH."
@@ -189,7 +205,7 @@ class GitService:
 
     def pull(self, repo_root: Path) -> tuple[bool, str]:
         """Update the current branch from its upstream."""
-        return self._run_with_error(repo_root, ["pull", "--ff-only"])
+        return self._run_with_error(repo_root, ["pull", "--ff-only"], no_prompt=True)
 
     def checkout_branch(self, repo_root: Path, branch: str) -> tuple[bool, str]:
         """Switch the repository to another branch."""
@@ -323,8 +339,8 @@ class GitService:
 
     def push(self, repo_root: Path) -> tuple[bool, str]:
         """Push the current branch to its configured upstream."""
-        return self._run_with_error(repo_root, ["push"])
+        return self._run_with_error(repo_root, ["push"], no_prompt=True)
 
     def fetch(self, repo_root: Path) -> tuple[bool, str]:
         """Fetch remote updates without merging."""
-        return self._run_with_error(repo_root, ["fetch", "--all", "--prune"])
+        return self._run_with_error(repo_root, ["fetch", "--all", "--prune"], no_prompt=True)

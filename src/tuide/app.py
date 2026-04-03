@@ -1448,13 +1448,15 @@ class TuideApp(App[None]):
             return
 
         if action_id == "git.session.pull":
-            success, output = self.git_service.pull(repo_root)
+            self.notify("Pulling…", severity="information")
+            success, output = await asyncio.to_thread(self.git_service.pull, repo_root)
             await self.open_git_output_tab("git:update", repo_root, output)
             self.notify("Project updated" if success else "Git pull failed", severity="information" if success else "error")
             return
 
         if action_id == "git.session.fetch":
-            success, output = self.git_service.fetch(repo_root)
+            self.notify("Fetching…", severity="information")
+            success, output = await asyncio.to_thread(self.git_service.fetch, repo_root)
             await self.open_git_output_tab("git:fetch", repo_root, output)
             self.notify("Fetch completed" if success else "Fetch failed", severity="information" if success else "error")
             return
@@ -1501,7 +1503,8 @@ class TuideApp(App[None]):
             return
 
         if action_id == "git.session.push":
-            success, output = self.git_service.push(repo_root)
+            self.notify("Pushing…", severity="information")
+            success, output = await asyncio.to_thread(self.git_service.push, repo_root)
             await self.open_git_output_tab("git:push", repo_root, output)
             self.notify("Push completed" if success else "Push failed", severity="information" if success else "error")
             return
