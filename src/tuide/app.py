@@ -54,7 +54,11 @@ def _fmt_shortcut_key(key: str) -> str:
 
 
 class ShortcutBar(Widget):
-    """Bottom bar showing keybindings as [KEY] Description badge pairs."""
+    """Bottom bar showing keybindings as [KEY] Description badge pairs.
+
+    Each pair is clickable: clicking anywhere over a key or its description
+    invokes the corresponding action.
+    """
 
     can_focus = False
 
@@ -63,22 +67,50 @@ class ShortcutBar(Widget):
         dock: bottom;
         height: 1;
         background: #161b22;
-        padding: 0 1;
     }
     """
 
+    def __init__(self) -> None:
+        super().__init__()
+        # List of (start_x, end_x, action_name) in content-relative coords.
+        self._regions: list[tuple[int, int, str]] = []
+
     def render(self) -> RichText:
         text = RichText(no_wrap=True, overflow="ellipsis")
+        self._regions = []
+        x = 0
+        # Leading space instead of CSS padding so event.x maps cleanly.
+        text.append(" ")
+        x += 1
         first = True
         for binding in self.app.BINDINGS:
             if not binding.show:
                 continue
             if not first:
-                text.append("  │  ", style="#3d444d")
+                sep = "  │  "
+                text.append(sep, style="#3d444d")
+                x += len(sep)
             first = False
-            text.append(f" {_fmt_shortcut_key(binding.key)} ", style="bold #cae8ff on #1a3a6b")
-            text.append(f" {binding.description}", style="#8b949e")
+            start = x
+            key_part = f" {_fmt_shortcut_key(binding.key)} "
+            desc_part = f" {binding.description}"
+            text.append(key_part, style="bold #cae8ff on #1a3a6b")
+            x += len(key_part)
+            text.append(desc_part, style="#8b949e")
+            x += len(desc_part)
+            self._regions.append((start, x, binding.action))
         return text
+
+    def on_click(self, event) -> None:
+        for start, end, action in self._regions:
+            if start <= event.x < end:
+                method = getattr(self.app, f"action_{action}", None)
+                if method is not None:
+                    result = method()
+                    if asyncio.iscoroutine(result):
+                        self.run_worker(result, exclusive=False)
+                event.stop()
+                return
 
 
 class TuideApp(App[None]):
