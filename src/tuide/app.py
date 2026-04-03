@@ -11,12 +11,13 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widget import Widget
-from textual.widgets import Button, DirectoryTree, Input, Select, Static, TabbedContent, TextArea
+from textual.widgets import Button, DirectoryTree, Input, Select, Static, TextArea
 
 from tuide.models import CapabilityStatus, ChoiceItem, CommandItem
 from tuide.services.config import ConfigStore
 from tuide.services.git import GitService
 from tuide.services.lsp import LspService
+from tuide.services.python_navigation import PythonNavigationService, PythonNavigationTarget
 from tuide.services.python_semantic import PythonSemanticService
 from tuide.services.search import SearchService
 from tuide.platform import PlatformInfo, detect_platform
@@ -347,6 +348,7 @@ class TuideApp(App[None]):
 
     #editor-tab-bar {
         width: 1fr;
+        height: auto;
         background: #0d1117;
         border-bottom: solid #21262d;
     }
@@ -583,6 +585,7 @@ class TuideApp(App[None]):
         self.workspace_state = self._load_workspace_state()
         self.git_service = GitService()
         self.lsp_service = LspService()
+        self.python_navigation = PythonNavigationService()
         self.python_semantic = PythonSemanticService()
         self.search_service = SearchService()
         self.workspace_width = self.config.workspace_width
@@ -794,6 +797,8 @@ class TuideApp(App[None]):
             self.run_worker(self.action_remove_workspace_root(), exclusive=False)
         elif button_id == "menu-git-session":
             self.run_worker(self.action_git_session(), exclusive=False)
+        elif button_id == "menu-todo":
+            self.run_worker(self.action_todo_list(), exclusive=False)
         elif button_id == "menu-quick-open":
             self.run_worker(self.action_quick_open(), exclusive=False)
         elif button_id == "menu-find-file":
@@ -1129,6 +1134,7 @@ class TuideApp(App[None]):
             CommandItem("git.history", "Git file history", "Show history for the active file"),
             CommandItem("git.blame", "Git blame", "Show blame for the active file"),
             CommandItem("git.line_history", "Git line history", "Show history for a chosen line range"),
+            CommandItem("todo.list", "Todo list", "Open TODO.md from the current workspace"),
             CommandItem("python.outline", "Python outline", "Show function, class, and usage summary for the active file"),
             CommandItem("python.symbol", "Python symbol details", "Show definitions and usages for the symbol at the cursor"),
             CommandItem("code.definition", "Go to definition", "Run code-intelligence definition action"),
@@ -1158,6 +1164,7 @@ class TuideApp(App[None]):
             items = [
                 ChoiceItem("workspace.add_root", "Add workspace root"),
                 ChoiceItem("workspace.remove_root", "Remove active workspace root"),
+                ChoiceItem("todo.list", "Todo list"),
                 ChoiceItem("search.quick_open", "Quick open file"),
                 ChoiceItem("search.find_workspace", "Search workspace"),
             ]
@@ -1214,6 +1221,7 @@ class TuideApp(App[None]):
             "git.history": self.action_git_history,
             "git.blame": self.action_git_blame,
             "git.line_history": self.action_git_line_history,
+            "todo.list": self.action_todo_list,
             "python.outline": self.action_python_outline,
             "python.symbol": self.action_python_symbol_details,
             "code.definition": self.action_code_goto_definition,
@@ -1292,6 +1300,27 @@ class TuideApp(App[None]):
         chosen_path = Path(selected)
         await self.query_one(EditorPanel).open_file(chosen_path)
         self.notify(f"Opened {chosen_path.name}")
+        self.refresh_status()
+
+    async def action_todo_list(self) -> None:
+        """Open the TODO list (or create one in the first workspace root)."""
+        roots = list(self.workspace_state.roots) or [Path.cwd()]
+        todo_path: Path | None = None
+
+        for root in roots:
+            candidate = root / "TODO.md"
+            if candidate.exists():
+                todo_path = candidate
+                break
+
+        if todo_path is None:
+            todo_path = roots[0] / "TODO.md"
+            todo_path.write_text(
+                "# TODO\n\n- [ ] Add tasks here\n",
+                encoding="utf-8",
+            )
+
+        await self.query_one(EditorPanel).open_file(todo_path)
         self.refresh_status()
 
     async def action_find_in_file(self) -> None:
@@ -1773,10 +1802,14 @@ class TuideApp(App[None]):
 
     async def action_code_goto_definition(self) -> None:
         """Perform the current definition action with LSP/AI fallback."""
+        if await self._run_python_navigation("Definition", "definition"):
+            return
         await self._run_code_intelligence("definition")
 
     async def action_code_find_references(self) -> None:
         """Find all references to a symbol across the workspace via regex search."""
+        if await self._run_python_navigation("References", "references"):
+            return
         symbol = await self.wait_for_screen_result(
             PromptDialog("Find references", placeholder="symbol name")
         )
@@ -1790,12 +1823,12 @@ class TuideApp(App[None]):
             self.workspace_state.roots, symbol
         )
         # Parse "path:line: snippet" tuples
-        results: list[tuple[str, int, str]] = []
+        results: list[tuple[str, int, int, str]] = []
         for match in raw_matches:
             try:
                 path_part, rest = match.split(":", 1)
                 line_part, snippet = rest.split(": ", 1)
-                results.append((path_part, int(line_part), snippet.strip()))
+                results.append((path_part, int(line_part), 1, snippet.strip()))
             except (ValueError, IndexError):
                 continue
 
@@ -1805,19 +1838,8 @@ class TuideApp(App[None]):
         if selection is None:
             return
 
-        path_str, line = selection
-        target = Path(path_str)
-        editor = self.query_one(EditorPanel)
-        await editor.open_file(target)
-        self.refresh_status()
-        # Move cursor to the matched line
-        text_area = editor.active_text_area
-        if text_area is not None:
-            try:
-                text_area.cursor_location = (max(0, line - 1), 0)
-                text_area.scroll_cursor_visible()
-            except Exception:
-                pass
+        path_str, line, column = selection
+        await self._open_location(Path(path_str), line, column)
 
     async def _run_code_intelligence(self, intent: str) -> None:
         """Run code intelligence or AI fallback."""
@@ -1856,6 +1878,91 @@ class TuideApp(App[None]):
         terminal = self.query_one("#terminal-panel")
         terminal.focus()
         self.notify("LSP unavailable, prepared AI fallback request", severity="warning")
+
+    async def _run_python_navigation(self, title: str, intent: str) -> bool:
+        """Attempt Python navigation from the current cursor location."""
+        editor = self.query_one(EditorPanel)
+        path = editor.active_path
+        text = editor.active_text
+        cursor = editor.active_cursor()
+        if (
+            path is None
+            or text is None
+            or cursor is None
+            or not self.python_navigation.available_for(path)
+        ):
+            return False
+
+        symbol = self.python_semantic.symbol_at_position(text, cursor[0], cursor[1])
+        if symbol is None:
+            self.notify("Move the cursor onto a Python symbol first", severity="warning")
+            return True
+
+        if intent == "definition":
+            targets = self.python_navigation.goto_definition(
+                path,
+                text,
+                cursor[0],
+                cursor[1],
+                self.workspace_state.roots,
+            )
+        else:
+            targets = self.python_navigation.find_references(
+                path,
+                text,
+                cursor[0],
+                cursor[1],
+                self.workspace_state.roots,
+            )
+
+        if not targets:
+            self.notify(f"No {intent} found for {symbol}", severity="warning")
+            return True
+
+        await self._present_python_navigation_results(title, symbol, targets)
+        return True
+
+    async def _present_python_navigation_results(
+        self,
+        title: str,
+        symbol: str,
+        targets: list[PythonNavigationTarget],
+    ) -> None:
+        """Open a single target directly or prompt the user to choose one."""
+        if len(targets) == 1:
+            target = targets[0]
+            await self._open_location(target.path, target.line, target.column)
+            return
+
+        selection = await self.wait_for_screen_result(
+            FindReferencesScreen(
+                symbol,
+                [
+                    (str(target.path), target.line, target.column, target.preview)
+                    for target in targets
+                ],
+                title=title,
+            )
+        )
+        if selection is None:
+            return
+
+        path_str, line, column = selection
+        await self._open_location(Path(path_str), line, column)
+
+    async def _open_location(self, path: Path, line: int, column: int) -> None:
+        """Open a file and move the cursor to a 1-based line and column."""
+        editor = self.query_one(EditorPanel)
+        await editor.open_file(path)
+        self.refresh_status()
+        text_area = editor.active_text_area
+        if text_area is None:
+            return
+        try:
+            text_area.cursor_location = (max(0, line - 1), max(0, column - 1))
+            text_area.scroll_cursor_visible()
+        except Exception:
+            pass
 
     def apply_panel_widths(self) -> None:
         """Apply current panel widths."""

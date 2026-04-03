@@ -14,6 +14,36 @@ from textual.widgets._tree import TreeNode
 from tuide.models import WorkspaceState
 
 
+_FILE_TYPE_STYLES: dict[str, Style] = {
+    ".py": Style(color="#61afef"),
+    ".scala": Style(color="#f7c96a"),
+    ".sc": Style(color="#f7c96a"),
+    ".sbt": Style(color="#e5c07b"),
+    ".md": Style(color="#98c379"),
+    ".json": Style(color="#d19a66"),
+    ".toml": Style(color="#e5c07b"),
+    ".yaml": Style(color="#56b6c2"),
+    ".yml": Style(color="#56b6c2"),
+    ".sql": Style(color="#c678dd"),
+    ".sh": Style(color="#e06c75"),
+    ".bash": Style(color="#e06c75"),
+    ".zsh": Style(color="#e06c75"),
+    ".txt": Style(color="#8b949e"),
+}
+
+_SPECIAL_FILE_STYLES: dict[str, Style] = {
+    "dockerfile": Style(color="#58a6ff"),
+    "makefile": Style(color="#e5c07b"),
+}
+
+
+def _file_type_style(path: Path) -> Style | None:
+    special = _SPECIAL_FILE_STYLES.get(path.name.lower())
+    if special is not None:
+        return special
+    return _FILE_TYPE_STYLES.get(path.suffix.lower())
+
+
 class _NarrowDirectoryTree(DirectoryTree):
     """DirectoryTree with single-width ASCII icons for cross-terminal compatibility."""
 
@@ -31,13 +61,12 @@ class _NarrowDirectoryTree(DirectoryTree):
             )
         else:
             prefix = ("  ", base_style)
-            node_label.stylize_before(
-                self.get_component_rich_style("directory-tree--file", partial=True)
-            )
-            node_label.highlight_regex(
-                r"\..+$",
-                self.get_component_rich_style("directory-tree--extension", partial=True),
-            )
+            file_style = self.get_component_rich_style("directory-tree--file", partial=True)
+            path = node.data.path if node.data is not None else None
+            type_style = _file_type_style(path) if path is not None else None
+            if type_style is not None:
+                file_style = Style.combine([file_style, type_style])
+            node_label.stylize_before(file_style)
 
         if node_label.plain.startswith("."):
             node_label.stylize_before(

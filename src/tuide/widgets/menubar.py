@@ -15,3 +15,4 @@ class MenuBar(Horizontal):
         yield Button("+", id="menu-add-root", classes="menu-button")
         yield Button("-", id="menu-remove-root", classes="menu-button")
         yield Button("Git", id="menu-git-session", classes="menu-button")
+        yield Button("TODO", id="menu-todo", classes="menu-button")

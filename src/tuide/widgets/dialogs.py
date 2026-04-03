@@ -609,10 +609,10 @@ class ContextMenuScreen(EscapeDismissMixin, ModalScreen[str | None]):
         self.dismiss(event.option_id)
 
 
-class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int] | None]):
-    """Bottom-right popup showing find-references results.
+class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] | None]):
+    """Bottom-right popup showing symbol-location results.
 
-    Returns ``(path_str, line_number)`` when the user selects an entry, or
+    Returns ``(path_str, line_number, column_number)`` when the user selects an entry, or
     ``None`` when dismissed.
     """
 
@@ -652,21 +652,28 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int] | Non
     }
     """
 
-    def __init__(self, symbol: str, results: list[tuple[str, int, str]]) -> None:
-        """``results`` is a list of ``(path_str, line, snippet)`` tuples."""
+    def __init__(
+        self,
+        symbol: str,
+        results: list[tuple[str, int, int, str]],
+        *,
+        title: str = "References",
+    ) -> None:
+        """``results`` is a list of ``(path_str, line, column, snippet)`` tuples."""
         super().__init__()
+        self._title = title
         self._symbol = symbol
         self._results = results
 
     def compose(self) -> ComposeResult:
         with Vertical(id="refs-panel"):
-            yield Label(f"References: {self._symbol}", id="refs-title")
+            yield Label(f"{self._title}: {self._symbol}", id="refs-title")
             if not self._results:
                 yield Static("No references found.", id="refs-empty")
             else:
                 options = [
-                    Option(f"{Path(path).name}:{line}  {snippet[:60]}", id=str(i))
-                    for i, (path, line, snippet) in enumerate(self._results)
+                    Option(f"{Path(path).name}:{line}:{column}  {snippet[:60]}", id=str(i))
+                    for i, (path, line, column, snippet) in enumerate(self._results)
                 ]
                 yield OptionList(*options, id="refs-list")
 
@@ -678,8 +685,8 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int] | Non
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         idx = int(event.option_id)
-        path_str, line, _snippet = self._results[idx]
-        self.dismiss((path_str, line))
+        path_str, line, column, _snippet = self._results[idx]
+        self.dismiss((path_str, line, column))
 
 
 class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
@@ -778,6 +785,11 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         color: #e6edf3;
     }
 
+    #message-hint {
+        height: 1;
+        color: #6e7681;
+    }
+
     #commit-actions {
         height: 3;
         align: right middle;
@@ -837,6 +849,7 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
             with Vertical(id="message-area"):
                 yield Label("Commit message", id="message-label")
                 yield Input(placeholder="Enter commit message…", id="message-input")
+                yield Label("Press Enter in the message field to commit", id="message-hint")
             with Horizontal(id="commit-actions"):
                 yield Button("Cancel", id="cancel-btn")
                 yield Button("Commit", id="do-commit-btn")
@@ -851,15 +864,32 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
     def _refresh_file_list(self) -> None:
         self._files = self.git_service.status_porcelain(self.repo_root)
         file_list = self.query_one("#file-list", ListView)
+        header = self.query_one("#file-panel-header", Label)
+        commit_button = self.query_one("#do-commit-btn", Button)
         file_list.clear()
+        header.update(f"Changes ({len(self._files)})")
+        commit_button.disabled = not bool(self._files)
         if not self._files:
             file_list.append(ListItem(Label("No changes to commit", classes="no-changes-label")))
+            self._show_diff(None)
             return
-        header = self.query_one("#file-panel-header", Label)
-        header.update(f"Changes ({len(self._files)})")
         for xy, filepath in self._files:
             display = self._format_status_line(xy, filepath)
             file_list.append(ListItem(Static(display, markup=True)))
+        file_list.index = 0
+        self._show_diff(0)
+
+    def _show_diff(self, index: int | None) -> None:
+        header = self.query_one("#diff-header", Label)
+        diff_view = self.query_one("#diff-view", TextArea)
+        if index is None or index < 0 or index >= len(self._files):
+            header.update("Select a file to preview its diff")
+            diff_view.text = "(No diff available)"
+            return
+        _xy, filepath = self._files[index]
+        header.update(f"  {filepath}")
+        diff = self.git_service.file_diff_workdir(self.repo_root, filepath)
+        diff_view.text = diff or "(No diff available)"
 
     def _format_status_line(self, xy: str, filepath: str) -> str:
         x, y = xy[0], xy[1] if len(xy) > 1 else " "
@@ -872,22 +902,31 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
             return f"[bold {color}]{xy}[/]  [dim]{parent}/[/][default]{filename}[/]"
         return f"[bold {color}]{xy}[/]  {filename}"
 
-    @on(ListView.Highlighted)
+    @on(ListView.Highlighted, "#file-list")
     def _on_file_highlighted(self, event: ListView.Highlighted) -> None:
-        idx = event.list_view.index
-        if idx is None or idx >= len(self._files):
-            return
-        xy, filepath = self._files[idx]
-        self.query_one("#diff-header", Label).update(f"  {filepath}")
-        diff = self.git_service.file_diff_workdir(self.repo_root, filepath)
-        self.query_one("#diff-view", TextArea).load_text(diff)
+        self._show_diff(event.list_view.index)
+
+    @on(ListView.Selected, "#file-list")
+    def _on_file_selected(self, event: ListView.Selected) -> None:
+        self._show_diff(event.list_view.index)
 
     @on(Button.Pressed, "#cancel-btn")
     def _on_cancel(self) -> None:
         self.dismiss(None)
 
     @on(Button.Pressed, "#do-commit-btn")
-    def _on_commit(self) -> None:
+    def _on_commit_button(self) -> None:
+        self._submit_commit()
+
+    @on(Input.Submitted, "#message-input")
+    def _on_commit_enter(self, event: Input.Submitted) -> None:
+        event.stop()
+        self._submit_commit()
+
+    def _submit_commit(self) -> None:
+        if not self._files:
+            self.notify("No changes to commit", severity="warning")
+            return
         message = self.query_one("#message-input", Input).value.strip()
         if not message:
             self.notify("Commit message cannot be empty", severity="warning")

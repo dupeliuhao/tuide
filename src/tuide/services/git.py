@@ -222,8 +222,8 @@ class GitService:
         return self._run_with_error(repo_root, ["switch", branch])
 
     def commit_all(self, repo_root: Path, message: str) -> tuple[bool, str]:
-        """Stage all tracked changes and create a commit."""
-        staged_ok, staged_output = self._run_with_error(repo_root, ["add", "-u"])
+        """Stage all changes and create a commit."""
+        staged_ok, staged_output = self._run_with_error(repo_root, ["add", "-A"])
         if not staged_ok:
             return False, staged_output
         commit_ok, commit_output = self._run_with_error(repo_root, ["commit", "-m", message])
@@ -304,18 +304,27 @@ class GitService:
 
     def status_porcelain(self, repo_root: Path) -> list[tuple[str, str]]:
         """Return (XY_status, filepath) pairs for all changed files."""
-        result = self._run(repo_root, ["status", "--porcelain"])
+        # Use NUL-delimited porcelain to avoid quote-escaping issues on paths with spaces.
+        result = self._run(repo_root, ["status", "--porcelain", "-z"])
         if result is None:
             return []
+
         files: list[tuple[str, str]] = []
-        for line in result.stdout.splitlines():
-            if len(line) < 3:
+        records = result.stdout.split("\0")
+        index = 0
+        while index < len(records):
+            record = records[index]
+            if not record or len(record) < 3:
+                index += 1
                 continue
-            xy = line[:2]
-            filepath = line[3:].strip()
-            if " -> " in filepath:
-                filepath = filepath.split(" -> ")[-1]
+            xy = record[:2]
+            filepath = record[3:]
             files.append((xy, filepath))
+            # Rename/copy in -z mode stores an extra NUL-delimited source path.
+            if ("R" in xy or "C" in xy) and index + 1 < len(records):
+                index += 2
+            else:
+                index += 1
         return files
 
     def file_diff_workdir(self, repo_root: Path, filepath: str) -> str:
@@ -332,7 +341,7 @@ class GitService:
         if full_path.exists():
             try:
                 lines = full_path.read_text(encoding="utf-8", errors="replace").splitlines()
-                return "\n".join(f"+{l}" for l in lines)
+                return "\n".join(f"+{line}" for line in lines)
             except Exception:
                 pass
         return "(No diff available)"
