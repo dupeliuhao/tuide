@@ -182,3 +182,7 @@ Once the app is open, try this:
 - The right panel is meant to be a normal terminal, not a dedicated AI-only surface.
 - If `git`, LSP servers, or terminal dependencies are missing, those advanced features are expected to be absent for now.
 testing testing
+testing 2 testing 2
+
+
+
