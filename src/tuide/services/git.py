@@ -480,9 +480,80 @@ class GitService:
                 text = full_path.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 text = ""
-            blocks = self.parse_conflict_blocks(text)
-            files.append(GitConflictFile(filepath=filepath, blocks=blocks))
+            files.append(self._build_conflict_file(filepath, text))
         return GitConflictState(operation=operation, files=files)
+
+    def _build_conflict_file(self, filepath: str, text: str) -> GitConflictFile:
+        """Build enriched conflict state for one file, including full-file candidates."""
+        blocks = self.parse_conflict_blocks(text)
+        if not blocks:
+            return GitConflictFile(
+                filepath=filepath,
+                blocks=[],
+                ours_full_text=text,
+                theirs_full_text=text,
+            )
+
+        ours_parts: list[str] = []
+        theirs_parts: list[str] = []
+        ours_line = 1
+        theirs_line = 1
+        cursor = 0
+        enriched_blocks: list[GitConflictBlock] = []
+
+        for block in blocks:
+            prefix = text[cursor : block.start_offset]
+            ours_parts.append(prefix)
+            theirs_parts.append(prefix)
+            ours_line += prefix.count("\n")
+            theirs_line += prefix.count("\n")
+
+            ours_start_line, ours_end_line = self._candidate_line_range(ours_line, block.ours_text)
+            theirs_start_line, theirs_end_line = self._candidate_line_range(theirs_line, block.theirs_text)
+
+            ours_parts.append(block.ours_text)
+            theirs_parts.append(block.theirs_text)
+            ours_line += block.ours_text.count("\n")
+            theirs_line += block.theirs_text.count("\n")
+            cursor = block.end_offset
+
+            enriched_blocks.append(
+                GitConflictBlock(
+                    index=block.index,
+                    start_line=block.start_line,
+                    end_line=block.end_line,
+                    start_offset=block.start_offset,
+                    end_offset=block.end_offset,
+                    ours_label=block.ours_label,
+                    theirs_label=block.theirs_label,
+                    ours_text=block.ours_text,
+                    theirs_text=block.theirs_text,
+                    base_text=block.base_text,
+                    ours_start_line=ours_start_line,
+                    ours_end_line=ours_end_line,
+                    theirs_start_line=theirs_start_line,
+                    theirs_end_line=theirs_end_line,
+                )
+            )
+
+        suffix = text[cursor:]
+        ours_parts.append(suffix)
+        theirs_parts.append(suffix)
+        return GitConflictFile(
+            filepath=filepath,
+            blocks=enriched_blocks,
+            ours_full_text="".join(ours_parts),
+            theirs_full_text="".join(theirs_parts),
+        )
+
+    @staticmethod
+    def _candidate_line_range(current_line: int, piece: str) -> tuple[int, int]:
+        """Return the inclusive line range occupied by one candidate block."""
+        if not piece:
+            return current_line, current_line
+        occupied_lines = piece.count("\n") + (0 if piece.endswith("\n") else 1)
+        end_line = current_line + max(occupied_lines - 1, 0)
+        return current_line, end_line
 
     def conflicted_files(self, repo_root: Path) -> list[str]:
         """Return repo-relative files with unresolved merge conflicts."""

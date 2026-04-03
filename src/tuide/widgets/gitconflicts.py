@@ -14,17 +14,36 @@ from tuide.models import GitConflictState
 from rich.text import Text
 
 
+_CONFLICT_LINE = "#c9d1d9"
 _CONFLICT_LEFT_LINE = "#ffd7ba on #2a1b14"
 _CONFLICT_RIGHT_LINE = "#c9e7ff on #122433"
+_CONFLICT_LEFT_SELECTED = "bold #ffe4cf on #4b2517"
+_CONFLICT_RIGHT_SELECTED = "bold #def1ff on #17364c"
 _CONFLICT_GUTTER = "dim #6e7681"
 
 
-def _build_conflict_candidate_text(text: str, *, line_style: str) -> Text:
-    """Render one candidate side of a conflict without +/- diff semantics."""
+def _build_conflict_candidate_text(
+    text: str,
+    *,
+    normal_style: str,
+    conflict_style: str,
+    selected_style: str,
+    conflict_ranges: list[tuple[int, int]],
+    selected_range: tuple[int, int] | None,
+) -> Text:
+    """Render one candidate side of a full-file conflict view."""
     rich = Text(no_wrap=True, overflow="fold")
     lines = text.splitlines() or [""]
     for line_number, line in enumerate(lines, start=1):
-        rich.append(f"{line_number:4} │ ", style=_CONFLICT_GUTTER)
+        line_style = normal_style
+        marker = " "
+        if selected_range is not None and selected_range[0] <= line_number <= selected_range[1]:
+            line_style = selected_style
+            marker = ">"
+        elif any(start <= line_number <= end for start, end in conflict_ranges):
+            line_style = conflict_style
+            marker = "!"
+        rich.append(f"{marker}{line_number:4} │ ", style=_CONFLICT_GUTTER)
         rich.append(f"{line}\n", style=line_style)
     return rich
 
@@ -236,11 +255,11 @@ class GitConflictResolverView(Vertical):
                 with Horizontal(id="conflict-diff-row"):
                     with Vertical(classes="conflict-diff-pane"):
                         yield Label("Ours", id="conflict-left-title", classes="conflict-diff-title")
-                        with VerticalScroll(classes="conflict-diff-scroll"):
+                        with VerticalScroll(id="conflict-left-scroll", classes="conflict-diff-scroll"):
                             yield Static("", id="conflict-left-diff", classes="conflict-diff-content")
                     with Vertical(classes="conflict-diff-pane"):
                         yield Label("Theirs", id="conflict-right-title", classes="conflict-diff-title")
-                        with VerticalScroll(classes="conflict-diff-scroll"):
+                        with VerticalScroll(id="conflict-right-scroll", classes="conflict-diff-scroll"):
                             yield Static("", id="conflict-right-diff", classes="conflict-diff-content")
                 yield Label("Resolved result", id="conflict-resolution-title")
                 yield TextArea("", id="conflict-resolution")
@@ -312,6 +331,8 @@ class GitConflictResolverView(Vertical):
         right_title = self.query_one("#conflict-right-title", Label)
         left_diff = self.query_one("#conflict-left-diff", Static)
         right_diff = self.query_one("#conflict-right-diff", Static)
+        left_scroll = self.query_one("#conflict-left-scroll", VerticalScroll)
+        right_scroll = self.query_one("#conflict-right-scroll", VerticalScroll)
         resolution = self.query_one("#conflict-resolution", TextArea)
         blocks = self.query_one("#conflict-blocks", OptionList)
 
@@ -357,16 +378,35 @@ class GitConflictResolverView(Vertical):
         theirs_label = block.theirs_label or "Incoming"
         left_title.update(f"Ours  [{ours_label}]")
         right_title.update(f"Theirs  [{theirs_label}]")
+
+        left_conflict_ranges = [
+            (candidate.ours_start_line, candidate.ours_end_line)
+            for candidate in conflict_file.blocks
+        ]
+        right_conflict_ranges = [
+            (candidate.theirs_start_line, candidate.theirs_end_line)
+            for candidate in conflict_file.blocks
+        ]
         left_rich = _build_conflict_candidate_text(
-            block.ours_text,
-            line_style=_CONFLICT_LEFT_LINE,
+            conflict_file.ours_full_text,
+            normal_style=_CONFLICT_LINE,
+            conflict_style=_CONFLICT_LEFT_LINE,
+            selected_style=_CONFLICT_LEFT_SELECTED,
+            conflict_ranges=left_conflict_ranges,
+            selected_range=(block.ours_start_line, block.ours_end_line),
         )
         right_rich = _build_conflict_candidate_text(
-            block.theirs_text,
-            line_style=_CONFLICT_RIGHT_LINE,
+            conflict_file.theirs_full_text,
+            normal_style=_CONFLICT_LINE,
+            conflict_style=_CONFLICT_RIGHT_LINE,
+            selected_style=_CONFLICT_RIGHT_SELECTED,
+            conflict_ranges=right_conflict_ranges,
+            selected_range=(block.theirs_start_line, block.theirs_end_line),
         )
         left_diff.update(left_rich)
         right_diff.update(right_rich)
+        left_scroll.scroll_to(y=max(0, block.ours_start_line - 3), animate=False)
+        right_scroll.scroll_to(y=max(0, block.theirs_start_line - 3), animate=False)
         block_label.update(
             f"Block {block.index + 1} of {len(conflict_file.blocks)}"
             f"  lines {block.start_line}-{block.end_line}"

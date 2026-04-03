@@ -94,6 +94,10 @@ class GitConflictBlock:
     ours_text: str
     theirs_text: str
     base_text: str = ""
+    ours_start_line: int = 0
+    ours_end_line: int = 0
+    theirs_start_line: int = 0
+    theirs_end_line: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +106,8 @@ class GitConflictFile:
 
     filepath: str
     blocks: list[GitConflictBlock]
+    ours_full_text: str = ""
+    theirs_full_text: str = ""
 
 
 @dataclass(frozen=True, slots=True)
