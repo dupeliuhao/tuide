@@ -74,32 +74,50 @@ class ShortcutBar(Widget):
         super().__init__()
         # List of (start_x, end_x, action_name) in content-relative coords.
         self._regions: list[tuple[int, int, str]] = []
+        self._hovered: int | None = None  # index into _regions
 
     def render(self) -> RichText:
         text = RichText(no_wrap=True, overflow="ellipsis")
         self._regions = []
         x = 0
-        # Leading space instead of CSS padding so event.x maps cleanly.
         text.append(" ")
         x += 1
         first = True
-        for binding in self.app.BINDINGS:
-            if not binding.show:
-                continue
+        for idx, binding in enumerate(b for b in self.app.BINDINGS if b.show):
             if not first:
                 sep = "  │  "
                 text.append(sep, style="#3d444d")
                 x += len(sep)
             first = False
+            hovered = self._hovered == idx
+            key_style = "bold #ffffff on #2d6fd6" if hovered else "bold #cae8ff on #1a3a6b"
+            desc_style = "#e6edf3" if hovered else "#8b949e"
             start = x
             key_part = f" {_fmt_shortcut_key(binding.key)} "
             desc_part = f" {binding.description}"
-            text.append(key_part, style="bold #cae8ff on #1a3a6b")
+            text.append(key_part, style=key_style)
             x += len(key_part)
-            text.append(desc_part, style="#8b949e")
+            text.append(desc_part, style=desc_style)
             x += len(desc_part)
             self._regions.append((start, x, binding.action))
         return text
+
+    def _region_at(self, mouse_x: int) -> int | None:
+        for idx, (start, end, _) in enumerate(self._regions):
+            if start <= mouse_x < end:
+                return idx
+        return None
+
+    def on_mouse_move(self, event) -> None:
+        new_hover = self._region_at(event.x)
+        if new_hover != self._hovered:
+            self._hovered = new_hover
+            self.refresh()
+
+    def on_leave(self, event) -> None:
+        if self._hovered is not None:
+            self._hovered = None
+            self.refresh()
 
     def on_click(self, event) -> None:
         for start, end, action in self._regions:
