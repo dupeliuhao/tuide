@@ -13,7 +13,7 @@ from textual.containers import Vertical
 from textual.geometry import Size
 from textual.message import Message
 from textual.widget import Widget
-from textual.widgets import Label, Static, Tab, TabPane, TabbedContent, TextArea
+from textual.widgets import ContentSwitcher, Label, Static, TextArea
 from textual.widgets.text_area import TextAreaTheme
 
 from tuide.models import OpenDocument
@@ -75,13 +75,11 @@ class WrappingTabBar(Widget):
     # Public API called by EditorPanel
 
     def set_tabs(self, tabs: list[tuple[str, str, bool]], active: str) -> None:
-        """Replace the full tab list and trigger a re-layout + redraw."""
         self._tabs = tabs
         self._active = active
         self.refresh(layout=True)
 
     def set_active(self, pane_id: str) -> None:
-        """Change which tab is highlighted without touching the list."""
         if self._active != pane_id:
             self._active = pane_id
             self.refresh()
@@ -90,13 +88,12 @@ class WrappingTabBar(Widget):
     # Layout
 
     def _pack_rows(self, width: int) -> list[list[tuple[str, str, bool]]]:
-        """Pack tabs into rows that fit within *width* cells."""
         rows: list[list[tuple[str, str, bool]]] = [[]]
         x = 0
         for entry in self._tabs:
             pane_id, name, dirty = entry
             w = _tab_cell_width(name, dirty)
-            if x + w > width and rows[-1]:   # start a new row
+            if x + w > width and rows[-1]:
                 rows.append([])
                 x = 0
             rows[-1].append(entry)
@@ -151,9 +148,7 @@ class WrappingTabBar(Widget):
                 combined.append(_SEP,       style=sep_style)
                 x = tab_end
 
-                # label region (click to activate)
                 self._regions.append((row_idx, tab_start, close_start, pane_id, False))
-                # close-button region
                 self._regions.append((row_idx, close_start, close_end, pane_id, True))
 
         return combined
@@ -196,64 +191,60 @@ class WrappingTabBar(Widget):
 # ---------------------------------------------------------------------------
 
 def detect_language(path: Path) -> str | None:
-    """Return a best-effort TextArea language name for a file path."""
     suffix = path.suffix.lower()
     mapping = {
-        ".py":   "python",
-        ".sql":  "sql",
-        ".md":   "markdown",
-        ".sh":   "bash",
-        ".bash": "bash",
-        ".zsh":  "bash",
-        ".json": "json",
-        ".toml": "toml",
-        ".yaml": "yaml",
-        ".yml":  "yaml",
-        ".csv":  None,
-        ".tsv":  None,
+        ".py":    "python",
+        ".sql":   "sql",
+        ".md":    "markdown",
+        ".sh":    "bash",
+        ".bash":  "bash",
+        ".zsh":   "bash",
+        ".json":  "json",
+        ".toml":  "toml",
+        ".yaml":  "yaml",
+        ".yml":   "yaml",
+        ".csv":   None,
+        ".tsv":   None,
         ".scala": None,
-        ".sc":   None,
-        ".sbt":  None,
+        ".sc":    None,
+        ".sbt":   None,
     }
     return mapping.get(suffix)
 
 
 def build_editor_theme() -> TextAreaTheme:
-    """Build the default code-editor theme for tuide."""
     base = TextAreaTheme.get_builtin_theme("vscode_dark")
     if base is None:
         return TextAreaTheme(
             name="tuide_code",
             syntax_styles={
-                "keyword": Style(color="#f7c96a", bold=True),
-                "string":  Style(color="#98c379"),
-                "comment": Style(color="#6a9955", italic=True),
-                "function":Style(color="#61afef"),
-                "type":    Style(color="#e5c07b", bold=True),
-                "number":  Style(color="#d19a66"),
+                "keyword":  Style(color="#f7c96a", bold=True),
+                "string":   Style(color="#98c379"),
+                "comment":  Style(color="#6a9955", italic=True),
+                "function": Style(color="#61afef"),
+                "type":     Style(color="#e5c07b", bold=True),
+                "number":   Style(color="#d19a66"),
             },
         )
 
     syntax_styles = dict(base.syntax_styles)
-    syntax_styles.update(
-        {
-            "keyword":           Style(color="#f7c96a", bold=True),
-            "keyword.function":  Style(color="#f7c96a", bold=True),
-            "string":            Style(color="#98c379"),
-            "comment":           Style(color="#6a9955", italic=True),
-            "function":          Style(color="#61afef", bold=True),
-            "function.method":   Style(color="#7ec7ff"),
-            "function.builtin":  Style(color="#56b6c2"),
-            "type":              Style(color="#e5c07b", bold=True),
-            "type.builtin":      Style(color="#e5c07b", bold=True),
-            "constructor":       Style(color="#d19a66", bold=True),
-            "number":            Style(color="#d19a66"),
-            "operator":          Style(color="#c8d3df"),
-            "property":          Style(color="#c678dd"),
-            "variable.parameter":Style(color="#e06c75", italic=True),
-            "variable.builtin":  Style(color="#56b6c2"),
-        }
-    )
+    syntax_styles.update({
+        "keyword":            Style(color="#f7c96a", bold=True),
+        "keyword.function":   Style(color="#f7c96a", bold=True),
+        "string":             Style(color="#98c379"),
+        "comment":            Style(color="#6a9955", italic=True),
+        "function":           Style(color="#61afef", bold=True),
+        "function.method":    Style(color="#7ec7ff"),
+        "function.builtin":   Style(color="#56b6c2"),
+        "type":               Style(color="#e5c07b", bold=True),
+        "type.builtin":       Style(color="#e5c07b", bold=True),
+        "constructor":        Style(color="#d19a66", bold=True),
+        "number":             Style(color="#d19a66"),
+        "operator":           Style(color="#c8d3df"),
+        "property":           Style(color="#c678dd"),
+        "variable.parameter": Style(color="#e06c75", italic=True),
+        "variable.builtin":   Style(color="#56b6c2"),
+    })
     return replace(
         base,
         name="tuide_code",
@@ -267,7 +258,6 @@ def build_editor_theme() -> TextAreaTheme:
 
 
 def build_code_editor(text: str, path: Path, pane_id: str) -> TextArea:
-    """Create a configured editor instance for a file."""
     editor = TextArea(
         text=text,
         language=detect_language(path),
@@ -293,7 +283,7 @@ def build_code_editor(text: str, path: Path, pane_id: str) -> TextArea:
 
 
 # ---------------------------------------------------------------------------
-# EditorPanel
+# EditorPanel — uses ContentSwitcher (not TabbedContent) + WrappingTabBar
 # ---------------------------------------------------------------------------
 
 class EditorPanel(Vertical):
@@ -305,13 +295,12 @@ class EditorPanel(Vertical):
     def __init__(self) -> None:
         super().__init__(id="editor-panel")
         self.documents: dict[str, OpenDocument] = {}
-        # Display labels for virtual (non-file) tabs
         self._virtual_tab_labels: dict[str, str] = {}
 
     def compose(self) -> ComposeResult:
         yield WrappingTabBar(id="editor-tab-bar")
-        with TabbedContent(id="editor-tabs"):
-            with TabPane("Welcome", id="welcome-tab"):
+        with ContentSwitcher(id="editor-content", initial="welcome-pane"):
+            with Vertical(id="welcome-pane"):
                 yield Label(
                     "tuide\n\nOpen a file from the workspace tree on the left.",
                     classes="editor-welcome",
@@ -324,38 +313,37 @@ class EditorPanel(Vertical):
     # ------------------------------------------------------------------
     # Tab-bar sync
 
+    @property
+    def content_switcher(self) -> ContentSwitcher:
+        return self.query_one("#editor-content", ContentSwitcher)
+
+    @property
+    def tab_bar(self) -> WrappingTabBar:
+        return self.query_one(WrappingTabBar)
+
     def _sync_tab_bar(self) -> None:
-        """Rebuild WrappingTabBar from the current TabbedContent pane list."""
         try:
             bar = self.query_one(WrappingTabBar)
         except Exception:
             return
+        switcher = self.content_switcher
         tabs: list[tuple[str, str, bool]] = []
-        for pane in self.tabbed_content.query("TabPane"):
-            pane_id = pane.id
+        for child in switcher.children:
+            pane_id = child.id
             doc = self.documents.get(pane_id)
             if doc is not None:
                 tabs.append((pane_id, doc.path.name, doc.dirty))
-            elif pane_id == "welcome-tab":
+            elif pane_id == "welcome-pane":
                 tabs.append((pane_id, "Welcome", False))
             else:
                 label = self._virtual_tab_labels.get(pane_id, pane_id)
                 tabs.append((pane_id, label, False))
-        bar.set_tabs(tabs, self.tabbed_content.active)
-
-    @on(TabbedContent.TabActivated)
-    def _on_tc_tab_activated(self, event: TabbedContent.TabActivated) -> None:
-        if event.tab is None:
-            return
-        pane_id = event.tab.id.removeprefix("tab-")
-        try:
-            self.query_one(WrappingTabBar).set_active(pane_id)
-        except Exception:
-            pass
+        bar.set_tabs(tabs, switcher.current or "")
 
     @on(WrappingTabBar.TabActivated)
     def _on_bar_tab_activated(self, event: WrappingTabBar.TabActivated) -> None:
-        self.tabbed_content.active = event.pane_id
+        self.content_switcher.current = event.pane_id
+        self._sync_tab_bar()
         doc = self.documents.get(event.pane_id)
         if doc is not None:
             try:
@@ -365,7 +353,7 @@ class EditorPanel(Vertical):
 
     @on(WrappingTabBar.TabCloseRequested)
     def _on_bar_tab_close_requested(self, event: WrappingTabBar.TabCloseRequested) -> None:
-        if event.pane_id == "welcome-tab":
+        if event.pane_id == "welcome-pane":
             return
         self.run_worker(self._close_pane_by_id(event.pane_id), exclusive=False)
 
@@ -373,16 +361,8 @@ class EditorPanel(Vertical):
     # Properties
 
     @property
-    def tabbed_content(self) -> TabbedContent:
-        return self.query_one("#editor-tabs", TabbedContent)
-
-    @property
-    def tab_bar(self) -> WrappingTabBar:
-        return self.query_one(WrappingTabBar)
-
-    @property
     def active_pane_id(self) -> str:
-        return self.tabbed_content.active
+        return self.content_switcher.current or ""
 
     @property
     def active_document(self) -> OpenDocument | None:
@@ -398,7 +378,10 @@ class EditorPanel(Vertical):
         doc = self.active_document
         if doc is None:
             return None
-        return self.query_one(f"#editor-{doc.pane_id}", TextArea)
+        try:
+            return self.query_one(f"#editor-{doc.pane_id}", TextArea)
+        except Exception:
+            return None
 
     def active_cursor(self) -> tuple[int, int] | None:
         editor = self.active_text_area
@@ -439,22 +422,21 @@ class EditorPanel(Vertical):
     # File operations
 
     async def open_file(self, path: Path) -> None:
-        """Open a file in a new tab or focus an existing tab."""
         pane_id = self._pane_id_for_path(path)
-        tabbed = self.tabbed_content
-        try:
-            tabbed.get_pane(pane_id)
-        except Exception:
+        switcher = self.content_switcher
+
+        if pane_id not in [c.id for c in switcher.children]:
             content = path.read_text(encoding="utf-8", errors="replace")
             editor = build_code_editor(content, path, pane_id)
-            pane = TabPane("", editor, id=pane_id)
-            await tabbed.add_pane(pane)
+            container = Vertical(editor, id=pane_id, classes="editor-pane")
+            await switcher.mount(container)
             self.documents[pane_id] = OpenDocument(path=path, pane_id=pane_id, saved_text=content)
-        tabbed.active = pane_id
+
+        switcher.current = pane_id
         self._sync_tab_bar()
-        editor = self.active_text_area
-        if editor is not None:
-            editor.focus()
+        ta = self.active_text_area
+        if ta is not None:
+            ta.focus()
 
     def save_active_file(self) -> Path | None:
         doc = self.active_document
@@ -468,46 +450,48 @@ class EditorPanel(Vertical):
         return doc.path
 
     async def close_active_tab(self) -> Path | None:
-        """Close the active tab. Closes virtual tabs too; skips the lone Welcome tab."""
-        tabbed = self.tabbed_content
-        active_id = tabbed.active
-        doc = self.active_document
-        if doc is None:
-            if active_id != "welcome-tab":
-                self._virtual_tab_labels.pop(active_id, None)
-                await tabbed.remove_pane(active_id)
-                self._sync_tab_bar()
+        switcher = self.content_switcher
+        active_id = switcher.current
+        if not active_id or active_id == "welcome-pane":
             return None
-        await tabbed.remove_pane(doc.pane_id)
-        self.documents.pop(doc.pane_id, None)
+        doc = self.documents.pop(active_id, None)
+        self._virtual_tab_labels.pop(active_id, None)
+        try:
+            child = switcher.query_one(f"#{active_id}")
+            await child.remove()
+        except Exception:
+            pass
+        # Activate the first remaining child
+        if switcher.children:
+            switcher.current = switcher.children[0].id
         self._sync_tab_bar()
-        return doc.path
+        return doc.path if doc else None
 
     async def open_readonly_tab(self, title: str, text: str, *, language: str | None = None) -> str:
         pane_id = self._pane_id_for_virtual_title(title)
-        tabbed = self.tabbed_content
-        try:
-            tabbed.get_pane(pane_id)
-        except Exception:
+        switcher = self.content_switcher
+
+        if pane_id not in [c.id for c in switcher.children]:
             viewer = TextArea(text=text, language=language, read_only=True, id=f"viewer-{pane_id}")
             viewer.show_line_numbers = True
-            pane = TabPane("", viewer, id=pane_id)
-            await tabbed.add_pane(pane)
+            container = Vertical(viewer, id=pane_id, classes="editor-pane")
+            await switcher.mount(container)
             self._virtual_tab_labels[pane_id] = title
-        tabbed.active = pane_id
+
+        switcher.current = pane_id
         self._sync_tab_bar()
         return pane_id
 
     async def open_result_tab(self, title: str, text: str) -> str:
         pane_id = self._pane_id_for_virtual_title(title)
-        tabbed = self.tabbed_content
-        try:
-            tabbed.get_pane(pane_id)
-        except Exception:
-            pane = TabPane("", Static(text, classes="panel-body"), id=pane_id)
-            await tabbed.add_pane(pane)
+        switcher = self.content_switcher
+
+        if pane_id not in [c.id for c in switcher.children]:
+            container = Vertical(Static(text, classes="panel-body"), id=pane_id, classes="editor-pane")
+            await switcher.mount(container)
             self._virtual_tab_labels[pane_id] = title
-        tabbed.active = pane_id
+
+        switcher.current = pane_id
         self._sync_tab_bar()
         return pane_id
 
@@ -518,22 +502,23 @@ class EditorPanel(Vertical):
         *,
         always_replace: bool = False,
     ) -> str:
-        """Open a tab containing an arbitrary widget."""
         pane_id = self._pane_id_for_virtual_title(title)
-        tabbed = self.tabbed_content
+        switcher = self.content_switcher
+
         if always_replace:
             try:
-                await tabbed.remove_pane(pane_id)
+                old = switcher.query_one(f"#{pane_id}")
+                await old.remove()
                 self._virtual_tab_labels.pop(pane_id, None)
             except Exception:
                 pass
-        try:
-            tabbed.get_pane(pane_id)
-        except Exception:
-            pane = TabPane("", widget, id=pane_id)
-            await tabbed.add_pane(pane)
+
+        if pane_id not in [c.id for c in switcher.children]:
+            container = Vertical(widget, id=pane_id, classes="editor-pane")
+            await switcher.mount(container)
             self._virtual_tab_labels[pane_id] = title
-        tabbed.active = pane_id
+
+        switcher.current = pane_id
         self._sync_tab_bar()
         return pane_id
 
@@ -546,25 +531,30 @@ class EditorPanel(Vertical):
         right_text: str,
     ) -> str:
         pane_id = self._pane_id_for_virtual_title(title)
-        tabbed = self.tabbed_content
-        try:
-            tabbed.get_pane(pane_id)
-        except Exception:
-            widget = DiffView(left_title, left_text, right_title, right_text)
-            pane = TabPane("", widget, id=pane_id)
-            await tabbed.add_pane(pane)
+        switcher = self.content_switcher
+
+        if pane_id not in [c.id for c in switcher.children]:
+            diff = DiffView(left_title, left_text, right_title, right_text)
+            container = Vertical(diff, id=pane_id, classes="editor-pane")
+            await switcher.mount(container)
             self._virtual_tab_labels[pane_id] = title
-        tabbed.active = pane_id
+
+        switcher.current = pane_id
         self._sync_tab_bar()
         return pane_id
 
     async def _close_pane_by_id(self, pane_id: str) -> None:
         self.documents.pop(pane_id, None)
         self._virtual_tab_labels.pop(pane_id, None)
+        switcher = self.content_switcher
+        was_active = switcher.current == pane_id
         try:
-            await self.tabbed_content.remove_pane(pane_id)
+            child = switcher.query_one(f"#{pane_id}")
+            await child.remove()
         except Exception:
             pass
+        if was_active and switcher.children:
+            switcher.current = switcher.children[0].id
         self._sync_tab_bar()
 
     # ------------------------------------------------------------------

@@ -32,7 +32,7 @@ from tuide.widgets.dialogs import (
     OptionPickerDialog,
     PromptDialog,
 )
-from tuide.widgets.editor import EditorPanel
+from tuide.widgets.editor import EditorPanel, WrappingTabBar
 from tuide.widgets.githistory import GitChangedFilesView, GitLogView
 from tuide.widgets.menubar import MenuBar
 from tuide.widgets.panels import WorkspacePanel
@@ -271,13 +271,7 @@ class TuideApp(App[None]):
         margin: 0;
     }
 
-    #editor-tabs {
-        height: 1fr;
-        background: #0d1117;
-        border-top: none;
-        padding-top: 0;
-        margin: 0;
-    }
+    /* editor-content handled above; terminal-tabs below */
 
     #terminal-tabs {
         height: 1fr;
@@ -287,8 +281,8 @@ class TuideApp(App[None]):
         margin: 0;
     }
 
-    /* Unify TabbedContent internals across all panels */
-    ContentSwitcher {
+    /* TabbedContent internals (terminal panel) */
+    #terminal-tabs ContentSwitcher {
         height: 1fr;
         background: #0d1117;
     }
@@ -351,16 +345,20 @@ class TuideApp(App[None]):
         color: #6e7681;
     }
 
-    /* Editor tab bar (custom WrappingTabBar replaces the built-in Tabs visually) */
-    #editor-tabs > Tabs {
-        height: 0;
-        min-height: 0;
-    }
-
     #editor-tab-bar {
         width: 1fr;
         background: #0d1117;
         border-bottom: solid #21262d;
+    }
+
+    #editor-content {
+        height: 1fr;
+        background: #0d1117;
+    }
+
+    .editor-pane {
+        height: 1fr;
+        background: #0d1117;
     }
 
     TabPane {
@@ -825,7 +823,7 @@ class TuideApp(App[None]):
         """Refresh status when editor contents or cursor position changes."""
         self.refresh_status()
 
-    @on(TabbedContent.TabActivated)
+    @on(WrappingTabBar.TabActivated)
     def sync_tab_status(self) -> None:
         """Refresh status and branch when the active editor tab changes."""
         self.refresh_status()
