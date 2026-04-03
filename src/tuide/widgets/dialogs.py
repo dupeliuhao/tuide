@@ -692,7 +692,7 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
         self.dismiss((path_str, line, column))
 
 
-class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
+class GitCommitScreen(EscapeDismissMixin, ModalScreen[tuple[str, bool] | None]):
     """Full-featured commit screen: file list, diff preview, message input."""
 
     CSS = """
@@ -833,6 +833,15 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         background: #2ea043;
     }
 
+    #do-commit-push-btn {
+        background: #0969da;
+        color: #ffffff;
+    }
+
+    #do-commit-push-btn:hover {
+        background: #218bff;
+    }
+
     .no-changes-label {
         color: #6e7681;
         padding: 1;
@@ -878,6 +887,7 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
                 yield Button("Cancel", id="cancel-btn")
                 yield Button("Discard File", id="discard-btn", disabled=True)
                 yield Button("Commit", id="do-commit-btn")
+                yield Button("Commit & Push", id="do-commit-push-btn")
 
     def on_mount(self) -> None:
         branch = self.git_service.current_branch(self.repo_root) or "detached"
@@ -895,9 +905,11 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         file_list = self.query_one("#file-list", ListView)
         header = self.query_one("#file-panel-header", Label)
         commit_button = self.query_one("#do-commit-btn", Button)
+        commit_push_button = self.query_one("#do-commit-push-btn", Button)
         file_list.clear()
         header.update(f"Changes ({len(self._files)})")
         commit_button.disabled = not bool(self._files)
+        commit_push_button.disabled = not bool(self._files)
         if not self._files:
             file_list.append(ListItem(Label("No changes to commit", classes="no-changes-label")))
             self._show_diff(None)
@@ -984,14 +996,18 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
 
     @on(Button.Pressed, "#do-commit-btn")
     def _on_commit_button(self) -> None:
-        self._submit_commit()
+        self._submit_commit(push_after=False)
+
+    @on(Button.Pressed, "#do-commit-push-btn")
+    def _on_commit_push_button(self) -> None:
+        self._submit_commit(push_after=True)
 
     @on(Input.Submitted, "#message-input")
     def _on_commit_enter(self, event: Input.Submitted) -> None:
         event.stop()
-        self._submit_commit()
+        self._submit_commit(push_after=False)
 
-    def _submit_commit(self) -> None:
+    def _submit_commit(self, *, push_after: bool) -> None:
         if not self._files:
             self.notify("No changes to commit", severity="warning")
             return
@@ -1000,4 +1016,4 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
             self.notify("Commit message cannot be empty", severity="warning")
             self.query_one("#message-input", Input).focus()
             return
-        self.dismiss(message)
+        self.dismiss((message, push_after))

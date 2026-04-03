@@ -1553,17 +1553,35 @@ class TuideApp(App[None]):
             return
 
         if action_id == "git.session.commit":
-            message = await self.wait_for_screen_result(
+            result = await self.wait_for_screen_result(
                 GitCommitScreen(repo_root, self.git_service)
             )
-            if not message:
+            if not result:
                 return
+            message, push_after = result
             success, output = await asyncio.to_thread(
                 self.git_service.commit_all, repo_root, str(message)
             )
             await self.open_git_output_tab("git:commit", repo_root, output)
             if success:
-                self.notify("Commit created")
+                if push_after:
+                    self.notify("Pushing…", severity="information")
+                    push_success, push_output = await asyncio.to_thread(
+                        self.git_service.push, repo_root
+                    )
+                    await self.open_git_output_tab("git:push", repo_root, push_output)
+                    if push_success:
+                        self.notify("Commit created and pushed")
+                    else:
+                        first_line = (
+                            push_output.splitlines()[0] if push_output else "unknown error"
+                        )
+                        self.notify(
+                            f"Commit created, but push failed: {first_line}",
+                            severity="error",
+                        )
+                else:
+                    self.notify("Commit created")
             else:
                 first_line = output.splitlines()[0] if output else "unknown error"
                 self.notify(f"Commit failed: {first_line}", severity="error")
