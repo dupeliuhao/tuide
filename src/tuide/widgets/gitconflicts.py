@@ -5,12 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.widgets import Button, Label, OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 
 from tuide.models import GitConflictState
+from tuide.widgets.diffview import _build_diff_markup
 
 
 class GitConflictResolverView(Vertical):
@@ -40,7 +41,9 @@ class GitConflictResolverView(Vertical):
     }
 
     #conflict-files-title,
-    #conflict-blocks-title {
+    #conflict-blocks-title,
+    .conflict-diff-title,
+    #conflict-resolution-title {
         height: 1;
         padding: 0 1;
         background: #161b22;
@@ -79,8 +82,31 @@ class GitConflictResolverView(Vertical):
         border-bottom: solid #21262d;
     }
 
-    #conflict-preview {
+    #conflict-diff-row {
         height: 1fr;
+    }
+
+    .conflict-diff-pane {
+        width: 1fr;
+        border-top: solid #21262d;
+    }
+
+    .conflict-diff-scroll {
+        height: 1fr;
+        background: #0d1117;
+    }
+
+    .conflict-diff-content {
+        background: #0d1117;
+        padding: 0 1;
+    }
+
+    #conflict-resolution-title {
+        border-top: solid #21262d;
+    }
+
+    #conflict-resolution {
+        height: 10;
         background: #0d1117;
     }
 
@@ -116,8 +142,18 @@ class GitConflictResolverView(Vertical):
             self.block_index = block_index
             self.choice = choice
 
+    class ApplyEditedResult(Message):
+        """Apply custom edited resolution text to the selected block."""
+
+        def __init__(self, repo_root: Path, filepath: str, block_index: int, text: str) -> None:
+            super().__init__()
+            self.repo_root = repo_root
+            self.filepath = filepath
+            self.block_index = block_index
+            self.text = text
+
     class EditManually(Message):
-        """Open the selected file in the editor for manual resolution."""
+        """Open the selected file in the editor for full-file manual resolution."""
 
         def __init__(self, repo_root: Path, filepath: str, start_line: int) -> None:
             super().__init__()
@@ -160,13 +196,14 @@ class GitConflictResolverView(Vertical):
         self._repo_root = repo_root
         self._selected_file = 0 if state.files else -1
         self._selected_block = 0
+        self._loaded_block_key: tuple[int, int] | None = None
 
     def compose(self) -> ComposeResult:
         count = len(self._state.files)
         yield Label(
             f" [bold #79c0ff]{self._state.operation}[/]"
             f"  [dim #8b949e]{count} conflicted file{'s' if count != 1 else ''}[/]"
-            "  [dim]Resolve blocks, edit manually, then continue or abort[/]",
+            "  [dim]Resolve blocks inline, then continue or abort[/]",
             id="conflict-header",
             markup=True,
         )
@@ -180,12 +217,23 @@ class GitConflictResolverView(Vertical):
                     yield Label("Conflict blocks", id="conflict-blocks-title")
                     yield OptionList(*self._block_options(), id="conflict-blocks")
                 yield Static("", id="conflict-selected-block")
-                yield TextArea("", read_only=True, id="conflict-preview")
+                with Horizontal(id="conflict-diff-row"):
+                    with Vertical(classes="conflict-diff-pane"):
+                        yield Label("Current", id="conflict-left-title", classes="conflict-diff-title")
+                        with VerticalScroll(classes="conflict-diff-scroll"):
+                            yield Static("", id="conflict-left-diff", classes="conflict-diff-content")
+                    with Vertical(classes="conflict-diff-pane"):
+                        yield Label("Incoming", id="conflict-right-title", classes="conflict-diff-title")
+                        with VerticalScroll(classes="conflict-diff-scroll"):
+                            yield Static("", id="conflict-right-diff", classes="conflict-diff-content")
+                yield Label("Resolved result", id="conflict-resolution-title")
+                yield TextArea("", id="conflict-resolution")
                 with Horizontal(id="conflict-action-row"):
                     yield Button("Accept Ours", id="conflict-ours", variant="primary")
                     yield Button("Accept Theirs", id="conflict-theirs")
                     yield Button("Accept Both", id="conflict-both")
-                    yield Button("Edit Manually", id="conflict-edit")
+                    yield Button("Apply Edited Result", id="conflict-apply-edited", variant="success")
+                    yield Button("Edit Full File", id="conflict-edit")
                     yield Button("Mark Resolved", id="conflict-mark", variant="success")
                 with Horizontal(id="conflict-flow-row"):
                     yield Button("Refresh", id="conflict-refresh")
@@ -201,7 +249,7 @@ class GitConflictResolverView(Vertical):
             blocks = self.query_one("#conflict-blocks", OptionList)
             if blocks.option_count:
                 blocks.highlighted = self._selected_block
-                blocks.focus()
+                self.query_one("#conflict-resolution", TextArea).focus()
             else:
                 files.focus()
         except Exception:
@@ -244,22 +292,29 @@ class GitConflictResolverView(Vertical):
     def _refresh_details(self) -> None:
         file_label = self.query_one("#conflict-selected-file", Static)
         block_label = self.query_one("#conflict-selected-block", Static)
-        preview = self.query_one("#conflict-preview", TextArea)
+        left_title = self.query_one("#conflict-left-title", Label)
+        right_title = self.query_one("#conflict-right-title", Label)
+        left_diff = self.query_one("#conflict-left-diff", Static)
+        right_diff = self.query_one("#conflict-right-diff", Static)
+        resolution = self.query_one("#conflict-resolution", TextArea)
         blocks = self.query_one("#conflict-blocks", OptionList)
 
         conflict_file = self._current_file()
         if conflict_file is None:
             file_label.update("No conflicted files remain. Continue to finish the operation or abort it.")
             block_label.update("")
-            preview.load_text("All current conflict markers are resolved.")
+            left_title.update("Current")
+            right_title.update("Incoming")
+            left_diff.update("All current conflict markers are resolved.")
+            right_diff.update("")
+            resolution.load_text("")
             self._set_block_buttons_enabled(False)
             blocks.clear_options()
             return
 
-        file_label.update(f"{conflict_file.filepath}")
-        block_options = self._block_options()
+        file_label.update(conflict_file.filepath)
         blocks.clear_options()
-        blocks.add_options(block_options)
+        blocks.add_options(self._block_options())
 
         block = self._current_block()
         if block is None:
@@ -267,34 +322,48 @@ class GitConflictResolverView(Vertical):
                 self._selected_block = 0
                 block = self._current_block()
             else:
-                block_label.update("No inline conflict markers detected. Use Edit Manually, then Mark Resolved.")
-                preview.load_text(
-                    "This file is still marked conflicted by Git, but tuide could not parse inline markers.\n\n"
-                    "Open it in the editor, make the final contents you want, then choose Mark Resolved."
+                block_label.update("No inline conflict markers detected. Use full-file editing, then Mark Resolved.")
+                left_title.update("Current")
+                right_title.update("Incoming")
+                left_diff.update(
+                    "This file is still marked conflicted by Git, but tuide could not parse inline markers."
                 )
+                right_diff.update(
+                    "Open the full file, make the final contents you want, then choose Mark Resolved."
+                )
+                resolution.load_text("")
+                self._loaded_block_key = None
                 self._set_block_buttons_enabled(False)
                 return
 
         blocks.highlighted = self._selected_block
-        preview_text = (
-            f"OURS: {block.ours_label or 'Current'}\n"
-            f"{'-' * 28}\n"
-            f"{block.ours_text or '(empty)'}\n\n"
-            f"THEIRS: {block.theirs_label or 'Incoming'}\n"
-            f"{'-' * 28}\n"
-            f"{block.theirs_text or '(empty)'}"
+        left_title.update(block.ours_label or "Current")
+        right_title.update(block.theirs_label or "Incoming")
+        left_rich, right_rich = _build_diff_markup(
+            block.ours_text.splitlines(),
+            block.theirs_text.splitlines(),
         )
-        if block.base_text:
-            preview_text += f"\n\nBASE\n{'-' * 28}\n{block.base_text}"
-        preview.load_text(preview_text)
+        left_diff.update(left_rich)
+        right_diff.update(right_rich)
         block_label.update(
             f"Block {block.index + 1} of {len(conflict_file.blocks)}"
             f"  lines {block.start_line}-{block.end_line}"
         )
+
+        current_key = (self._selected_file, self._selected_block)
+        if self._loaded_block_key != current_key:
+            resolution.load_text(block.ours_text)
+            self._loaded_block_key = current_key
+
         self._set_block_buttons_enabled(True)
 
     def _set_block_buttons_enabled(self, enabled: bool) -> None:
-        for button_id in ("#conflict-ours", "#conflict-theirs", "#conflict-both"):
+        for button_id in (
+            "#conflict-ours",
+            "#conflict-theirs",
+            "#conflict-both",
+            "#conflict-apply-edited",
+        ):
             self.query_one(button_id, Button).disabled = not enabled
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
@@ -334,15 +403,37 @@ class GitConflictResolverView(Vertical):
             return
         if block is None:
             return
+
+        resolution = self.query_one("#conflict-resolution", TextArea)
+
         if button_id == "conflict-ours":
+            resolution.load_text(block.ours_text)
             self.post_message(
                 self.ApplyChoice(self._repo_root, conflict_file.filepath, block.index, "ours")
             )
-        elif button_id == "conflict-theirs":
+            return
+        if button_id == "conflict-theirs":
+            resolution.load_text(block.theirs_text)
             self.post_message(
                 self.ApplyChoice(self._repo_root, conflict_file.filepath, block.index, "theirs")
             )
-        elif button_id == "conflict-both":
+            return
+        if button_id == "conflict-both":
+            combined = block.ours_text
+            if block.ours_text and block.theirs_text and not block.ours_text.endswith("\n"):
+                combined += "\n"
+            combined += block.theirs_text
+            resolution.load_text(combined)
             self.post_message(
                 self.ApplyChoice(self._repo_root, conflict_file.filepath, block.index, "both")
+            )
+            return
+        if button_id == "conflict-apply-edited":
+            self.post_message(
+                self.ApplyEditedResult(
+                    self._repo_root,
+                    conflict_file.filepath,
+                    block.index,
+                    resolution.text,
+                )
             )

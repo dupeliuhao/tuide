@@ -577,6 +577,32 @@ class GitService:
             return False, str(error)
         return True, f"Applied {choice} to {Path(filepath).name}."
 
+    def apply_conflict_resolution_text(
+        self,
+        repo_root: Path,
+        filepath: str,
+        block_index: int,
+        resolved_text: str,
+    ) -> tuple[bool, str]:
+        """Replace one conflict block with custom resolved text."""
+        full_path = repo_root / filepath
+        try:
+            text = full_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as error:
+            return False, str(error)
+
+        blocks = self.parse_conflict_blocks(text)
+        block = next((candidate for candidate in blocks if candidate.index == block_index), None)
+        if block is None:
+            return False, "Unable to locate the selected conflict block."
+
+        updated = text[: block.start_offset] + resolved_text + text[block.end_offset :]
+        try:
+            full_path.write_text(updated, encoding="utf-8")
+        except OSError as error:
+            return False, str(error)
+        return True, f"Applied edited resolution to {Path(filepath).name}."
+
     def parse_conflict_blocks(self, text: str) -> list[GitConflictBlock]:
         """Parse merge conflict markers from a text file."""
         if self._MERGE_BASE_MARKER not in text:

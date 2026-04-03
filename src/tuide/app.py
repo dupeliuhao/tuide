@@ -1804,6 +1804,25 @@ class TuideApp(App[None]):
         await self._show_conflict_resolver(event.repo_root)
         self.notify(output)
 
+    async def on_git_conflict_resolver_view_apply_edited_result(
+        self,
+        event: GitConflictResolverView.ApplyEditedResult,
+    ) -> None:
+        """Apply edited resolution text to the selected conflict block."""
+        success, output = await asyncio.to_thread(
+            self.git_service.apply_conflict_resolution_text,
+            event.repo_root,
+            event.filepath,
+            event.block_index,
+            event.text,
+        )
+        if not success:
+            self.notify(output, severity="error")
+            return
+        self._sync_open_file_with_git(event.repo_root, event.repo_root / event.filepath)
+        await self._show_conflict_resolver(event.repo_root)
+        self.notify(output)
+
     async def on_git_conflict_resolver_view_edit_manually(
         self,
         event: GitConflictResolverView.EditManually,
@@ -1815,7 +1834,7 @@ class TuideApp(App[None]):
             return
         await self._open_location(path, event.start_line, 1)
         self.notify(
-            "Edit the file, then return to Git Conflicts and choose Mark Resolved.",
+            "Opened the full file. You can still resolve the current block inline in Git Conflicts if you prefer.",
             severity="information",
         )
 
