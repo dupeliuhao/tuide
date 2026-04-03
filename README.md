@@ -181,3 +181,4 @@ Once the app is open, try this:
 - Windows and macOS abstraction seams are already present, but those targets are not the active testing focus yet.
 - The right panel is meant to be a normal terminal, not a dedicated AI-only surface.
 - If `git`, LSP servers, or terminal dependencies are missing, those advanced features are expected to be absent for now.
+testing testing
