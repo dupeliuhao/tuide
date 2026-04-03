@@ -113,3 +113,12 @@ Status key:
 3. Upgrade Git views from plain text tabs to richer diff/history UI.
 4. Implement real LSP request flow before deepening AI fallback behavior.
 5. Add mouse drag splitters and stronger interaction polish.
+
+## Git authentication — todo
+
+- `todo` UI to configure git credentials (access token, username/password) stored in `~/.config/tuide/git-credentials.toml`
+- `todo` inject configured credentials via `GIT_ASKPASS` helper script or `credential.helper` override when running push/pull/fetch
+- `todo` support personal access token (PAT) flow for GitHub/GitLab/Bitbucket HTTPS remotes
+- `todo` test push/pull against a private HTTPS remote with a stored PAT
+- `todo` test push/pull against a private HTTPS remote with username + password
+- `todo` test that a missing/wrong credential fails fast with a clear error (no freeze)
