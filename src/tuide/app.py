@@ -1912,6 +1912,15 @@ class TuideApp(App[None]):
             return
         self.notify(self._git_error_summary("Abort", result.output), severity="error")
 
+    async def on_editor_panel_virtual_tab_closed(
+        self,
+        event: EditorPanel.VirtualTabClosed,
+    ) -> None:
+        """When Git Conflicts closes, clean up the rest of the transient update tabs."""
+        if event.title != "Git Conflicts":
+            return
+        await self._close_git_update_tabs()
+
     async def on_git_changed_files_view_file_selected(
         self, event: GitChangedFilesView.FileSelected
     ) -> None:

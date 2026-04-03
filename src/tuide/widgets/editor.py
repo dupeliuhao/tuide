@@ -373,6 +373,14 @@ class EditorPanel(Vertical):
     DEFAULT_CLASSES = "panel-frame"
     can_focus = True
 
+    class VirtualTabClosed(Message):
+        """A non-file tab was closed from the editor panel."""
+
+        def __init__(self, pane_id: str, title: str) -> None:
+            super().__init__()
+            self.pane_id = pane_id
+            self.title = title
+
     def __init__(self) -> None:
         super().__init__(id="editor-panel")
         self.documents: dict[str, OpenDocument] = {}
@@ -714,7 +722,7 @@ class EditorPanel(Vertical):
 
     async def _close_pane_by_id(self, pane_id: str) -> None:
         self.documents.pop(pane_id, None)
-        self._virtual_tab_labels.pop(pane_id, None)
+        virtual_title = self._virtual_tab_labels.pop(pane_id, None)
         content_area = self.query_one("#editor-content")
         was_active = self._current_pane == pane_id
         try:
@@ -728,6 +736,8 @@ class EditorPanel(Vertical):
             else:
                 self._current_pane = ""
         self._sync_tab_bar()
+        if virtual_title is not None:
+            self.post_message(self.VirtualTabClosed(pane_id, virtual_title))
 
     # ------------------------------------------------------------------
     # Dirty tracking
