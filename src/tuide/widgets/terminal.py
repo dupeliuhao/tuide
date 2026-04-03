@@ -129,8 +129,14 @@ class TerminalPanel(Vertical):
 
     def _renumber_tabs(self) -> None:
         """Relabel remaining terminal tabs with sequential 1-based indices."""
-        for i, pane in enumerate(self._tabs.query("TabPane"), start=1):
-            pane.title = self._tab_label(i)
+        tabs = self._tabs
+        for i, pane in enumerate(tabs.query("TabPane"), start=1):
+            label = self._tab_label(i)
+            pane.title = label
+            try:
+                tabs.get_tab(pane.id).label = label
+            except Exception:
+                pass
 
     async def close_active_tab(self) -> bool:
         """Close the active terminal tab. Returns False if it's the last one."""
