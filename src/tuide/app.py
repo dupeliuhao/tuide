@@ -351,10 +351,10 @@ class TuideApp(App[None]):
         color: #6e7681;
     }
 
-    /* Editor tab bar (custom WrappingTabBar replaces the built-in Tabs) */
+    /* Editor tab bar (custom WrappingTabBar replaces the built-in Tabs visually) */
     #editor-tabs > Tabs {
-        display: none;
         height: 0;
+        min-height: 0;
     }
 
     #editor-tab-bar {
