@@ -658,6 +658,25 @@ class TuideApp(App[None]):
         self.refresh_status()
         self.sync_splitter_visibility()
         self._refresh_branch_indicator()
+        self._open_welcome_if_project()
+
+    def _open_welcome_if_project(self) -> None:
+        """Open a welcome tab showing the project README, if a workspace root exists."""
+        if not self.workspace_state.roots:
+            return
+        root = self.workspace_state.roots[0]
+        project_name = root.name
+        readme_text: str | None = None
+        for candidate in ("README.md", "readme.md", "README.rst", "README.txt", "README"):
+            readme_path = root / candidate
+            if readme_path.is_file():
+                try:
+                    readme_text = readme_path.read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    pass
+                break
+        editor = self.query_one(EditorPanel)
+        self.run_worker(editor.open_welcome_tab(project_name, readme_text), exclusive=False)
 
     def refresh_status(self) -> None:
         """Update the status bar left text (no git subprocess)."""
@@ -739,11 +758,19 @@ class TuideApp(App[None]):
         self.push_screen(screen, callback=_resolve)
         return await future
 
+    async def _open_editor_file(self, path: Path) -> None:
+        """Open a file in the editor, supplying git HEAD text for dirty tracking."""
+        repo_root = self.git_service.repo_root_for(path)
+        git_head_text: str | None = None
+        if repo_root is not None:
+            git_head_text = self.git_service.show_file(repo_root, "HEAD", path)
+        await self.query_one(EditorPanel).open_file(path, git_head_text=git_head_text)
+        self.refresh_status()
+
     @on(DirectoryTree.FileSelected)
     async def open_selected_file(self, event: DirectoryTree.FileSelected) -> None:
         """Open a selected file from the workspace tree."""
-        await self.query_one(EditorPanel).open_file(event.path)
-        self.refresh_status()
+        await self._open_editor_file(event.path)
 
     @on(Select.Changed)
     async def handle_root_switch(self, event: Select.Changed) -> None:
@@ -1298,9 +1325,8 @@ class TuideApp(App[None]):
             return
 
         chosen_path = Path(selected)
-        await self.query_one(EditorPanel).open_file(chosen_path)
+        await self._open_editor_file(chosen_path)
         self.notify(f"Opened {chosen_path.name}")
-        self.refresh_status()
 
     async def action_todo_list(self) -> None:
         """Open the TODO list (or create one in the first workspace root)."""
@@ -1320,8 +1346,7 @@ class TuideApp(App[None]):
                 encoding="utf-8",
             )
 
-        await self.query_one(EditorPanel).open_file(todo_path)
-        self.refresh_status()
+        await self._open_editor_file(todo_path)
 
     async def action_find_in_file(self) -> None:
         """Search for text in the active file and open a results tab."""
@@ -1952,9 +1977,8 @@ class TuideApp(App[None]):
 
     async def _open_location(self, path: Path, line: int, column: int) -> None:
         """Open a file and move the cursor to a 1-based line and column."""
+        await self._open_editor_file(path)
         editor = self.query_one(EditorPanel)
-        await editor.open_file(path)
-        self.refresh_status()
         text_area = editor.active_text_area
         if text_area is None:
             return

@@ -21,6 +21,7 @@ class OpenDocument:
     pane_id: str
     dirty: bool = False
     saved_text: str = ""
+    git_head_text: str | None = None
 
 
 @dataclass(slots=True)

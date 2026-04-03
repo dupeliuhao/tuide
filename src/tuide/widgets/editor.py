@@ -377,20 +377,13 @@ class EditorPanel(Vertical):
         super().__init__(id="editor-panel")
         self.documents: dict[str, OpenDocument] = {}
         self._virtual_tab_labels: dict[str, str] = {}
-        self._current_pane: str = "welcome-pane"
+        self._current_pane: str = ""
 
     def compose(self) -> ComposeResult:
         yield WrappingTabBar(id="editor-tab-bar")
-        with Vertical(id="editor-content"):
-            with Vertical(id="welcome-pane", classes="editor-pane"):
-                yield Label(
-                    "tuide\n\nOpen a file from the workspace tree on the left.",
-                    classes="editor-welcome",
-                    id="welcome-copy",
-                )
+        yield Vertical(id="editor-content")
 
     def on_mount(self) -> None:
-        self._show_pane(self._current_pane)
         self._sync_tab_bar()
 
     # ------------------------------------------------------------------
@@ -422,8 +415,6 @@ class EditorPanel(Vertical):
             doc = self.documents.get(pane_id)
             if doc is not None:
                 tabs.append((pane_id, doc.path.name, doc.dirty))
-            elif pane_id == "welcome-pane":
-                tabs.append((pane_id, "Welcome", False))
             else:
                 label = self._virtual_tab_labels.get(pane_id, pane_id)
                 tabs.append((pane_id, label, False))
@@ -442,8 +433,6 @@ class EditorPanel(Vertical):
 
     @on(WrappingTabBar.TabCloseRequested)
     def _on_bar_tab_close_requested(self, event: WrappingTabBar.TabCloseRequested) -> None:
-        if event.pane_id == "welcome-pane":
-            return
         self.run_worker(self._close_pane_by_id(event.pane_id), exclusive=False)
 
     # ------------------------------------------------------------------
@@ -510,7 +499,7 @@ class EditorPanel(Vertical):
     # ------------------------------------------------------------------
     # File operations
 
-    async def open_file(self, path: Path) -> None:
+    async def open_file(self, path: Path, git_head_text: str | None = None) -> None:
         pane_id = self._pane_id_for_path(path)
         content_area = self.query_one("#editor-content")
 
@@ -519,7 +508,9 @@ class EditorPanel(Vertical):
             editor = build_code_editor(content, path, pane_id)
             container = Vertical(editor, id=pane_id, classes="editor-pane")
             await content_area.mount(container)
-            self.documents[pane_id] = OpenDocument(path=path, pane_id=pane_id, saved_text=content)
+            doc = OpenDocument(path=path, pane_id=pane_id, saved_text=content, git_head_text=git_head_text)
+            doc.dirty = git_head_text is not None and content != git_head_text
+            self.documents[pane_id] = doc
 
         self._show_pane(pane_id)
         self._sync_tab_bar()
@@ -533,14 +524,11 @@ class EditorPanel(Vertical):
         if doc is None or editor is None:
             return None
         doc.path.write_text(editor.text, encoding="utf-8")
-        doc.dirty = False
-        doc.saved_text = editor.text
-        self._sync_tab_bar()
         return doc.path
 
     async def close_active_tab(self) -> Path | None:
         active_id = self._current_pane
-        if not active_id or active_id == "welcome-pane":
+        if not active_id:
             return None
         doc = self.documents.pop(active_id, None)
         self._virtual_tab_labels.pop(active_id, None)
@@ -550,9 +538,10 @@ class EditorPanel(Vertical):
             await child.remove()
         except Exception:
             pass
-        # Activate the first remaining child
         if content_area.children:
             self._show_pane(content_area.children[0].id)
+        else:
+            self._current_pane = ""
         self._sync_tab_bar()
         return doc.path if doc else None
 
@@ -633,6 +622,33 @@ class EditorPanel(Vertical):
         self._sync_tab_bar()
         return pane_id
 
+    async def open_welcome_tab(self, project_name: str, readme_text: str | None) -> None:
+        """Open (or focus) the welcome tab for the given project."""
+        pane_id = "welcome-pane"
+        content_area = self.query_one("#editor-content")
+
+        if pane_id in [c.id for c in content_area.children]:
+            self._show_pane(pane_id)
+            self._sync_tab_bar()
+            return
+
+        if readme_text:
+            viewer = TextArea(text=readme_text, language=None, read_only=True, id=f"viewer-{pane_id}")
+            _apply_language(viewer, "markdown")
+            viewer.show_line_numbers = False
+            content = viewer
+        else:
+            content = Label(
+                f"{project_name}\n\nOpen a file from the workspace tree on the left.",
+                classes="editor-welcome",
+            )
+
+        container = Vertical(content, id=pane_id, classes="editor-pane")
+        await content_area.mount(container)
+        self._virtual_tab_labels[pane_id] = project_name
+        self._show_pane(pane_id)
+        self._sync_tab_bar()
+
     async def _close_pane_by_id(self, pane_id: str) -> None:
         self.documents.pop(pane_id, None)
         self._virtual_tab_labels.pop(pane_id, None)
@@ -643,8 +659,11 @@ class EditorPanel(Vertical):
             await child.remove()
         except Exception:
             pass
-        if was_active and content_area.children:
-            self._show_pane(content_area.children[0].id)
+        if was_active:
+            if content_area.children:
+                self._show_pane(content_area.children[0].id)
+            else:
+                self._current_pane = ""
         self._sync_tab_bar()
 
     # ------------------------------------------------------------------
@@ -656,7 +675,14 @@ class EditorPanel(Vertical):
         doc = self.documents.get(pane_id)
         if doc is None:
             return
-        now_dirty = event.text_area.text != doc.saved_text
+        current_text = event.text_area.text
+        # Auto-save every change immediately
+        try:
+            doc.path.write_text(current_text, encoding="utf-8")
+        except Exception:
+            pass
+        # Dirty = differs from git HEAD (not from saved state)
+        now_dirty = current_text != doc.git_head_text if doc.git_head_text is not None else False
         if now_dirty == doc.dirty:
             return
         doc.dirty = now_dirty

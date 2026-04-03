@@ -346,6 +346,10 @@ class GitService:
                 pass
         return "(No diff available)"
 
+    def restore_file(self, repo_root: Path, filepath: str) -> tuple[bool, str]:
+        """Discard working-tree changes for one file, restoring to HEAD."""
+        return self._run_with_error(repo_root, ["checkout", "HEAD", "--", filepath])
+
     def push(self, repo_root: Path) -> tuple[bool, str]:
         """Push the current branch to its configured upstream."""
         return self._run_with_error(repo_root, ["push"], no_prompt=True)
