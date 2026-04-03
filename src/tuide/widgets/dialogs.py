@@ -702,7 +702,7 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
 
     #commit-dialog {
         width: 92%;
-        height: 88%;
+        height: 90%;
         border: solid #30363d;
         background: #161b22;
     }
@@ -797,6 +797,7 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         align: right middle;
         padding: 0 1;
         border-top: solid #21262d;
+        dock: bottom;
     }
 
     #commit-actions Button {
