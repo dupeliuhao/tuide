@@ -370,16 +370,24 @@ class TuideApp(App[None]):
     Tab {
         background: #0d1117;
         color: #8b949e;
+        max-width: 28;
     }
 
     Tab.-active {
         background: #0d1117;
         color: #e6edf3;
+        max-width: 28;
     }
 
     Tab:hover {
         background: #161b22;
         color: #c9d1d9;
+    }
+
+    /* Constrain the scroll track so the Tabs widget clips at the panel edge */
+    #editor-tabs > Tabs,
+    #editor-tabs > Tabs > #tabs-scroll {
+        width: 1fr;
     }
 
     DirectoryTree {

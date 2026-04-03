@@ -114,8 +114,13 @@ def build_code_editor(text: str, path: Path, pane_id: str) -> TextArea:
     return editor
 
 
-def _closeable_label(name: str, dirty: bool = False) -> Text:
-    """Build a tab label with a dimmed × close button."""
+def _closeable_label(name: str, dirty: bool = False, max_name: int = 18) -> Text:
+    """Build a tab label with a dimmed × close button.
+
+    Long filenames are truncated with an ellipsis so the tab stays compact.
+    """
+    if len(name) > max_name:
+        name = name[: max_name - 1] + "…"
     t = Text()
     if dirty:
         t.append("* ", style="bold")
