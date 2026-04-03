@@ -758,6 +758,12 @@ class TuideApp(App[None]):
         self.push_screen(screen, callback=_resolve)
         return await future
 
+    @on(GitCommitScreen.FileDiscarded)
+    def _on_file_discarded(self, event: GitCommitScreen.FileDiscarded) -> None:
+        """Reload the editor tab after a file is restored to HEAD via Discard."""
+        self.query_one(EditorPanel).reload_file(event.path)
+        self.refresh_status()
+
     async def _open_editor_file(self, path: Path) -> None:
         """Open a file in the editor, supplying git HEAD text for dirty tracking."""
         repo_root = self.git_service.repo_root_for(path)

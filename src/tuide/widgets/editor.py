@@ -518,6 +518,24 @@ class EditorPanel(Vertical):
         if ta is not None:
             ta.focus()
 
+    def reload_file(self, path: Path) -> None:
+        """Reload a file from disk into its open TextArea and reset dirty state."""
+        pane_id = self._pane_id_for_path(path)
+        doc = self.documents.get(pane_id)
+        if doc is None:
+            return
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return
+        try:
+            ta = self.query_one(f"#editor-{pane_id}", TextArea)
+            ta.load_text(content)
+        except Exception:
+            pass
+        doc.dirty = doc.git_head_text is not None and content != doc.git_head_text
+        self._sync_tab_bar()
+
     def save_active_file(self) -> Path | None:
         doc = self.active_document
         editor = self.active_text_area

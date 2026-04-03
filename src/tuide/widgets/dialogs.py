@@ -7,6 +7,7 @@ from pathlib import Path
 
 from textual import on
 from textual.app import ComposeResult
+from textual.message import Message
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.events import Key
@@ -847,6 +848,11 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         "!": "#6e7681",
     }
 
+    class FileDiscarded(Message):
+        def __init__(self, path: Path) -> None:
+            self.path = path
+            super().__init__()
+
     def __init__(self, repo_root: Path, git_service) -> None:
         super().__init__()
         self.repo_root = repo_root
@@ -962,6 +968,7 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         ok, _output = self.git_service.restore_file(self.repo_root, filepath)
         if ok:
             self.notify(f"Discarded changes: {Path(filepath).name}")
+            self.post_message(self.FileDiscarded(self.repo_root / filepath))
         else:
             self.notify(f"Failed to discard {Path(filepath).name}", severity="error")
         self._refresh_file_list()
