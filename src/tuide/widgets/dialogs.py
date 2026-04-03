@@ -175,6 +175,8 @@ class HelpDialog(EscapeDismissMixin, ModalScreen[None]):
             yield Label("Tab / Shift+Tab  cycle focus between panels", classes="help-line")
             yield Label("Esc              return focus to the editor", classes="help-line")
             yield Label("Ctrl+S           save active file", classes="help-line")
+            yield Label("Ctrl+Z           undo last edit", classes="help-line")
+            yield Label("Ctrl+Shift+Z     redo last undone edit", classes="help-line")
             yield Label("Ctrl+W           close active tab", classes="help-line")
             yield Label("Ctrl+Q           quit with unsaved-changes prompt", classes="help-line")
             yield Label("Ctrl+B           toggle workspace panel", classes="help-line")
@@ -382,9 +384,8 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
     }
 
     #picker-dialog {
-        width: 76;
-        height: auto;
-        max-height: 85%;
+        width: 80;
+        height: 24;
         border: solid #30363d;
         background: #161b22;
         padding: 0 1;
@@ -393,23 +394,36 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
     #picker-title {
         text-style: bold;
         color: #e6edf3;
-        padding-bottom: 0;
+        height: 1;
     }
 
     #picker-input {
-        margin-bottom: 0;
+        height: 3;
+        margin: 0;
     }
 
     #picker-options {
-        height: 10;
-        min-height: 6;
+        height: 1fr;
+        border: none;
+        background: #161b22;
+        padding: 0;
+    }
+
+    #picker-options > .option-list--option-highlighted {
+        background: #1f6feb;
+        color: #e6edf3;
+        text-style: bold;
+    }
+
+    #picker-options:focus > .option-list--option-highlighted {
+        background: #1f6feb;
+        color: #e6edf3;
     }
 
     #picker-actions {
         width: 100%;
-        height: auto;
+        height: 1;
         align: right middle;
-        margin-top: 0;
     }
 
     Button {

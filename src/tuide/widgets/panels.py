@@ -4,10 +4,47 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from rich.style import Style
+from rich.text import Text
 from textual.containers import Vertical
 from textual.widgets import DirectoryTree, Label, Select, Static
+from textual.widgets._directory_tree import DirEntry
+from textual.widgets._tree import TreeNode
 
 from tuide.models import WorkspaceState
+
+
+class _NarrowDirectoryTree(DirectoryTree):
+    """DirectoryTree with single-width ASCII icons for cross-terminal compatibility."""
+
+    def render_label(self, node: TreeNode[DirEntry], base_style: Style, style: Style) -> Text:
+        node_label = node._label.copy()
+        node_label.stylize(style)
+
+        if not self.is_mounted:
+            return node_label
+
+        if node._allow_expand:
+            prefix = ("▾ " if node.is_expanded else "▸ ", base_style)
+            node_label.stylize_before(
+                self.get_component_rich_style("directory-tree--folder", partial=True)
+            )
+        else:
+            prefix = ("  ", base_style)
+            node_label.stylize_before(
+                self.get_component_rich_style("directory-tree--file", partial=True)
+            )
+            node_label.highlight_regex(
+                r"\..+$",
+                self.get_component_rich_style("directory-tree--extension", partial=True),
+            )
+
+        if node_label.plain.startswith("."):
+            node_label.stylize_before(
+                self.get_component_rich_style("directory-tree--hidden")
+            )
+
+        return Text.assemble(prefix, node_label)
 
 
 class PanelFrame(Vertical):
@@ -49,7 +86,7 @@ class WorkspacePanel(PanelFrame):
             prompt="Active workspace root",
             allow_blank=False,
         )
-        yield DirectoryTree(str(self.primary_root), id="workspace-tree")
+        yield _NarrowDirectoryTree(str(self.primary_root), id="workspace-tree")
 
     def on_mount(self) -> None:
         """Hide the root selector unless it is actually needed."""
@@ -57,7 +94,7 @@ class WorkspacePanel(PanelFrame):
 
     def set_active_root(self, root: Path) -> None:
         """Switch the active root shown by the tree."""
-        tree = self.query_one("#workspace-tree", DirectoryTree)
+        tree = self.query_one("#workspace-tree", _NarrowDirectoryTree)
         tree.path = root
         select = self.query_one("#workspace-root-select", Select)
         select.value = str(root)

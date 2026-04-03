@@ -9,6 +9,7 @@ from rich.style import Style
 from rich.text import Text
 from textual import events, on
 from textual.containers import Vertical
+from textual.widget import Widget
 from textual.widgets import Label, Static, Tab, TabPane, TabbedContent, TextArea
 from textual.widgets.text_area import TextAreaTheme
 
@@ -285,6 +286,34 @@ class EditorPanel(Vertical):
         tabbed.active = pane_id
         return pane_id
 
+    async def open_widget_tab(
+        self,
+        title: str,
+        widget: Widget,
+        *,
+        always_replace: bool = False,
+    ) -> str:
+        """Open a tab containing an arbitrary widget.
+
+        When *always_replace* is True, an existing tab with the same title is
+        removed first so that fresh content is always shown (useful for the git
+        log view that should reflect the current branch state on every open).
+        """
+        pane_id = self._pane_id_for_virtual_title(title)
+        tabbed = self.tabbed_content
+        if always_replace:
+            try:
+                await tabbed.remove_pane(pane_id)
+            except Exception:
+                pass
+        try:
+            tabbed.get_pane(pane_id)
+        except Exception:
+            pane = TabPane(_closeable_label(title), widget, id=pane_id)
+            await tabbed.add_pane(pane)
+        tabbed.active = pane_id
+        return pane_id
+
     async def open_diff_tab(
         self,
         title: str,
@@ -334,10 +363,10 @@ class EditorPanel(Vertical):
         except Exception:
             pass
 
-    @on(events.Click, "Tab")
+    @on(events.Click)
     def _on_tab_close_click(self, event: events.Click) -> None:
         """Close a tab when the × at the end of its label is clicked."""
-        tab = event.widget
+        tab = event._sender
         if not isinstance(tab, Tab):
             return
         # The label ends with "  ×" (3 cells). Only trigger in the last 3 cells.

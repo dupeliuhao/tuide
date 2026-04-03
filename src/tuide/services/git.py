@@ -232,6 +232,60 @@ class GitService:
                         changed.add(line)
         return [repo_root / rel for rel in sorted(changed)]
 
+    def branch_history(self, repo_root: Path, limit: int = 200) -> list[GitHistoryEntry]:
+        """Return structured history entries for the current branch."""
+        result = self._run(
+            repo_root,
+            [
+                "log",
+                f"--max-count={limit}",
+                "--date=short",
+                "--format=%h%x1f%ad%x1f%an%x1f%s",
+            ],
+        )
+        if result is None:
+            return []
+        entries: list[GitHistoryEntry] = []
+        for line in result.stdout.splitlines():
+            if not line.strip():
+                continue
+            parts = line.split("\x1f", 3)
+            if len(parts) == 4:
+                entries.append(
+                    GitHistoryEntry(commit=parts[0], date=parts[1], author=parts[2], subject=parts[3])
+                )
+        return entries
+
+    def files_changed_in_commit(
+        self, repo_root: Path, commit: str
+    ) -> list[tuple[str, str, str | None]]:
+        """Return (status, new_filepath, old_filepath|None) for each file in a commit.
+
+        old_filepath is only set for renames and copies; None otherwise.
+        Paths are repo-relative POSIX strings.
+        """
+        result = self._run(
+            repo_root,
+            ["diff-tree", "--no-commit-id", "-r", "--name-status", commit],
+        )
+        if result is None:
+            return []
+        entries: list[tuple[str, str, str | None]] = []
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split("\t")
+            if not parts:
+                continue
+            status = parts[0][0]  # first char: M, A, D, R, C, …
+            if status in ("R", "C") and len(parts) >= 3:
+                # rename/copy: old_path<tab>new_path
+                entries.append((status, parts[2], parts[1]))
+            elif len(parts) >= 2:
+                entries.append((status, parts[1], None))
+        return entries
+
     def push(self, repo_root: Path) -> tuple[bool, str]:
         """Push the current branch to its configured upstream."""
         return self._run_with_error(repo_root, ["push"])

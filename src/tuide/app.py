@@ -30,6 +30,7 @@ from tuide.widgets.dialogs import (
     PromptDialog,
 )
 from tuide.widgets.editor import EditorPanel
+from tuide.widgets.githistory import GitChangedFilesView, GitLogView
 from tuide.widgets.menubar import MenuBar
 from tuide.widgets.panels import WorkspacePanel
 from tuide.widgets.splitter import VerticalSplitter
@@ -136,6 +137,10 @@ class TuideApp(App[None]):
         width: 34;
     }
 
+    #terminal-panel Terminal {
+        background: #0d1117;
+    }
+
     .panel-title {
         text-style: bold;
         color: #79c0ff;
@@ -188,6 +193,69 @@ class TuideApp(App[None]):
     }
 
     /* Unify TabbedContent internals across all panels */
+    ContentSwitcher {
+        height: 1fr;
+        background: #0d1117;
+    }
+
+    /* Git history widgets */
+    GitLogView,
+    GitChangedFilesView {
+        height: 1fr;
+        background: #0d1117;
+        padding: 0;
+    }
+
+    .git-list-header {
+        height: auto;
+        padding: 0 1;
+        background: #161b22;
+        color: #8b949e;
+    }
+
+    GitLogView ListView,
+    GitChangedFilesView ListView {
+        background: #0d1117;
+        height: 1fr;
+        border: none;
+        padding: 0;
+    }
+
+    GitLogView ListItem,
+    GitChangedFilesView ListItem {
+        background: #0d1117;
+        height: auto;
+        padding: 0 1;
+    }
+
+    GitLogView ListItem.hovered,
+    GitChangedFilesView ListItem.hovered {
+        background: #161b22;
+    }
+
+    GitLogView ListItem.--highlight,
+    GitChangedFilesView ListItem.--highlight {
+        background: #1f2d3d;
+    }
+
+    /* Transparent so the ListItem background (hover/highlight) shows through */
+    GitLogView Static,
+    GitChangedFilesView Static {
+        background: transparent;
+    }
+
+    .commit-summary {
+        height: 1;
+        padding: 0;
+        color: #e6edf3;
+    }
+
+    .commit-author {
+        height: 1;
+        padding: 0;
+        color: #6e7681;
+    }
+
     Tabs {
         background: #0d1117;
         border-bottom: none;
@@ -327,6 +395,21 @@ class TuideApp(App[None]):
         height: 1;
     }
 
+    #toggle-editor-btn {
+        width: auto;
+        height: 1;
+        min-height: 1;
+        padding: 0 1;
+        border: none;
+        background: #1f2d3d;
+        color: #8b949e;
+    }
+
+    #toggle-editor-btn:hover {
+        background: #1d3557;
+        color: #e6edf3;
+    }
+
     #branch-indicator {
         width: auto;
         height: 1;
@@ -341,6 +424,17 @@ class TuideApp(App[None]):
         background: #1d3557;
         color: #a5d6ff;
     }
+
+    OptionList > .option-list--option-hover {
+        background: #21262d;
+        color: #e6edf3;
+    }
+
+    OptionList > .option-list--option-hover-highlighted {
+        background: #388bfd;
+        color: #ffffff;
+        text-style: bold;
+    }
     """
 
     BINDINGS = [
@@ -351,15 +445,19 @@ class TuideApp(App[None]):
         Binding("ctrl+shift+p", "show_command_palette", "Palette"),
         Binding("ctrl+p", "quick_open", "Quick Open"),
         Binding("ctrl+s", "save_file", "Save"),
+        Binding("ctrl+z", "undo_in_editor", "Undo", show=False),
+        Binding("ctrl+shift+z", "redo_in_editor", "Redo", show=False),
         Binding("ctrl+w", "close_tab", "Close Tab"),
         Binding("ctrl+f", "find_in_file", "Find"),
         Binding("ctrl+shift+f", "find_in_workspace", "Find in Workspace"),
         Binding("ctrl+.", "show_context_actions", "Context Actions"),
         Binding("ctrl+b", "toggle_workspace", "Toggle Workspace"),
+        Binding("ctrl+e", "toggle_editor", "Toggle Editor"),
         Binding("ctrl+j", "toggle_terminal", "Toggle Terminal"),
         Binding("ctrl+r", "restart_terminal", "Restart Terminal"),
         Binding("ctrl+t", "new_terminal_tab", "New Terminal Tab", show=False),
         Binding("ctrl+shift+w", "close_terminal_tab", "Close Terminal Tab", show=False),
+        Binding("ctrl+shift+g", "git_branch_history", "Git Log", show=False),
         Binding("ctrl+alt+comma", "shrink_workspace", "Narrow Left", show=False),
         Binding("ctrl+alt+period", "grow_workspace", "Widen Left", show=False),
         Binding("ctrl+alt+bracketleft", "shrink_terminal", "Narrow Right", show=False),
@@ -407,6 +505,7 @@ class TuideApp(App[None]):
                 yield TerminalPanel(self.platform.default_shell)
             with Horizontal(id="status-bar"):
                 yield Static(self.build_status_text(), id="status-left")
+                yield Button("Editor", id="toggle-editor-btn")
                 yield Button("⎇ —", id="branch-indicator")
         yield Footer()
 
@@ -571,6 +670,9 @@ class TuideApp(App[None]):
                 top_screen.dismiss(prompt_input.value)
                 return
 
+        if button_id == "toggle-editor-btn":
+            self.action_toggle_editor()
+            return
         if button_id == "branch-indicator":
             self.run_worker(self.action_open_branch_picker(), exclusive=False)
             return
@@ -805,6 +907,20 @@ class TuideApp(App[None]):
         self.sync_splitter_visibility()
         self.refresh_status()
 
+    def action_toggle_editor(self) -> None:
+        """Show or hide the editor panel."""
+        panel = self.query_one("#editor-panel")
+        panel.display = not panel.display
+        terminal = self.query_one("#terminal-panel")
+        if not panel.display:
+            # Editor hidden — let terminal fill the freed space
+            terminal.styles.width = "1fr"
+        else:
+            # Editor restored — return terminal to its saved width
+            terminal.styles.width = self.terminal_width
+        self.sync_splitter_visibility()
+        self.refresh_status()
+
     def action_toggle_terminal(self) -> None:
         """Show or hide the terminal panel."""
         panel = self.query_one("#terminal-panel")
@@ -818,6 +934,18 @@ class TuideApp(App[None]):
         if saved is not None:
             self.notify(f"Saved {saved.name}")
         self.refresh_status()
+
+    def action_undo_in_editor(self) -> None:
+        """Undo the last edit in the active editor."""
+        editor = self.query_one(EditorPanel).active_text_area
+        if editor is not None:
+            editor.action_undo()
+
+    def action_redo_in_editor(self) -> None:
+        """Redo the last undone edit in the active editor."""
+        editor = self.query_one(EditorPanel).active_text_area
+        if editor is not None:
+            editor.action_redo()
 
     async def action_close_tab(self) -> None:
         """Close the active editor tab."""
@@ -903,6 +1031,7 @@ class TuideApp(App[None]):
             CommandItem("search.find_workspace", "Find in workspace", "Search text across workspace roots"),
             CommandItem("view.toggle_workspace", "Toggle workspace", "Show or hide the left panel"),
             CommandItem("view.toggle_terminal", "Toggle terminal", "Show or hide the right panel"),
+            CommandItem("git.branch_history", "Git branch history", "Browse commits on the current branch"),
             CommandItem("git.session", "Git session", "Open project-level Git actions"),
             CommandItem("git.diff", "Git diff with branch", "Compare current file to another branch"),
             CommandItem("git.changed_files", "Git changed files", "Show side-by-side diff for any file changed vs HEAD"),
@@ -987,6 +1116,7 @@ class TuideApp(App[None]):
             "search.quick_open": self.action_quick_open,
             "search.find_file": self.action_find_in_file,
             "search.find_workspace": self.action_find_in_workspace,
+            "git.branch_history": self.action_git_branch_history,
             "git.session": self.action_git_session,
             "git.diff": self.action_git_diff,
             "git.changed_files": self.action_git_changed_files,
@@ -1198,11 +1328,20 @@ class TuideApp(App[None]):
                         label="Status",
                         description="Show branch and working tree changes",
                     ),
+                    ChoiceItem(
+                        id="git.session.branch_history",
+                        label="Branch History",
+                        description="Browse commits on the current branch",
+                    ),
                 ],
                 placeholder="Filter git actions",
             )
         )
         if action_id is None:
+            return
+
+        if action_id == "git.session.branch_history":
+            await self.action_git_branch_history()
             return
 
         if action_id == "git.session.status":
@@ -1288,6 +1427,77 @@ class TuideApp(App[None]):
             self.notify("Active file is not inside a Git repository", severity="warning")
             return None
         return path, repo_root
+
+    async def action_git_branch_history(self) -> None:
+        """Open an interactive commit log for the current branch."""
+        repo_root = self.active_repo_root()
+        if repo_root is None:
+            return
+        branch = self.git_service.current_branch(repo_root) or "HEAD"
+        entries = self.git_service.branch_history(repo_root)
+        if not entries:
+            self.notify("No commits found in this repository", severity="warning")
+            return
+        view = GitLogView(branch=branch, entries=entries, repo_root=repo_root)
+        await self.query_one(EditorPanel).open_widget_tab("Git Log", view, always_replace=True)
+        self.refresh_status()
+
+    async def on_git_log_view_commit_selected(self, event: GitLogView.CommitSelected) -> None:
+        """Open a changed-files tab when the user picks a commit from the log."""
+        commit = event.commit
+        repo_root = event.repo_root
+        file_entries = self.git_service.files_changed_in_commit(repo_root, commit)
+        if not file_entries:
+            self.notify(f"No file changes recorded for {commit[:8]}", severity="information")
+            return
+        view = GitChangedFilesView(
+            commit=commit,
+            subject=event.subject,
+            file_entries=file_entries,
+            repo_root=repo_root,
+        )
+        await self.query_one(EditorPanel).open_widget_tab(
+            f"Commit {commit[:8]}", view, always_replace=True
+        )
+        self.refresh_status()
+
+    async def on_git_changed_files_view_file_selected(
+        self, event: GitChangedFilesView.FileSelected
+    ) -> None:
+        """Open a delta diff when the user picks a file from a commit's change list."""
+        commit = event.commit
+        repo_root = event.repo_root
+        filepath = event.filepath
+        old_filepath = event.old_filepath
+        status = event.status
+        short = commit[:8]
+
+        if status == "A":
+            before_text = ""
+            before_label = "/dev/null"
+        else:
+            src = old_filepath if old_filepath else filepath
+            before_raw = self.git_service.show_file(repo_root, f"{commit}~1", repo_root / src)
+            before_text = before_raw if before_raw is not None else ""
+            before_label = f"{short}~1:{src}"
+
+        if status == "D":
+            after_text = ""
+            after_label = "/dev/null"
+        else:
+            after_raw = self.git_service.show_file(repo_root, commit, repo_root / filepath)
+            after_text = after_raw if after_raw is not None else ""
+            after_label = f"{short}:{filepath}"
+
+        filename = Path(filepath).name
+        await self.query_one(EditorPanel).open_diff_tab(
+            f"{short}:{filename}",
+            before_label,
+            before_text,
+            after_label,
+            after_text,
+        )
+        self.refresh_status()
 
     async def action_git_changed_files(self) -> None:
         """Pick a file changed vs HEAD and open it in a side-by-side diff tab."""
@@ -1570,8 +1780,9 @@ class TuideApp(App[None]):
         """Keep splitters aligned with panel visibility."""
         workspace_visible = self.query_one("#workspace-panel").display
         terminal_visible = self.query_one("#terminal-panel").display
-        self.query_one("#workspace-splitter").display = workspace_visible
-        self.query_one("#terminal-splitter").display = terminal_visible
+        editor_visible = self.query_one("#editor-panel").display
+        self.query_one("#workspace-splitter").display = workspace_visible and editor_visible
+        self.query_one("#terminal-splitter").display = terminal_visible and editor_visible
 
     def adjust_workspace_by(self, delta: int) -> None:
         """Resize the workspace panel by a drag delta."""

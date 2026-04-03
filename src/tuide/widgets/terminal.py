@@ -120,8 +120,17 @@ class TerminalPanel(Vertical):
         tabs.active = pane_id
         if is_real:
             self._terminal_widgets[pane_id] = widget
-            widget.start()
-            widget.focus()
+
+            def _start_and_focus() -> None:
+                widget.start()
+                widget.focus()
+
+            self.call_after_refresh(_start_and_focus)
+
+    def _renumber_tabs(self) -> None:
+        """Relabel remaining terminal tabs with sequential 1-based indices."""
+        for i, pane in enumerate(self._tabs.query("TabPane"), start=1):
+            pane.title = self._tab_label(i)
 
     async def close_active_tab(self) -> bool:
         """Close the active terminal tab. Returns False if it's the last one."""
@@ -136,6 +145,7 @@ class TerminalPanel(Vertical):
             except Exception:
                 pass
         await tabs.remove_pane(active_id)
+        self._renumber_tabs()
         return True
 
     def restart_active(self) -> bool:
@@ -155,10 +165,10 @@ class TerminalPanel(Vertical):
         """Restart the active terminal (backward-compat alias)."""
         return self.restart_active()
 
-    @on(events.Click, "Tab")
+    @on(events.Click)
     def _on_tab_close_click(self, event: events.Click) -> None:
         """Close a terminal tab when the × at the end of its label is clicked."""
-        tab = event.widget
+        tab = event._sender
         if not isinstance(tab, Tab):
             return
         if event.x < tab.size.width - 3:
@@ -182,3 +192,4 @@ class TerminalPanel(Vertical):
             await tabs.remove_pane(pane_id)
         except Exception:
             pass
+        self._renumber_tabs()
