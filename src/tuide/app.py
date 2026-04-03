@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from rich.text import Text as RichText
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, DirectoryTree, Footer, Input, Select, Static, TabbedContent, TextArea
+from textual.widget import Widget
+from textual.widgets import Button, DirectoryTree, Input, Select, Static, TabbedContent, TextArea
 
 from tuide.models import CapabilityStatus, ChoiceItem, CommandItem
 from tuide.services.config import ConfigStore
@@ -35,6 +37,48 @@ from tuide.widgets.menubar import MenuBar
 from tuide.widgets.panels import WorkspacePanel
 from tuide.widgets.splitter import VerticalSplitter
 from tuide.widgets.terminal import TerminalPanel, terminal_backend_available
+
+
+def _fmt_shortcut_key(key: str) -> str:
+    """Convert a raw binding key string into a compact badge label."""
+    result = (
+        key.replace("ctrl+shift+", "^⇧")
+           .replace("ctrl+alt+", "^⌥")
+           .replace("ctrl+", "^")
+           .replace("shift+", "⇧")
+           .replace("alt+", "⌥")
+    )
+    if result and result[-1].isalpha():
+        result = result[:-1] + result[-1].upper()
+    return result
+
+
+class ShortcutBar(Widget):
+    """Bottom bar showing keybindings as [KEY] Description badge pairs."""
+
+    can_focus = False
+
+    DEFAULT_CSS = """
+    ShortcutBar {
+        dock: bottom;
+        height: 1;
+        background: #161b22;
+        padding: 0 1;
+    }
+    """
+
+    def render(self) -> RichText:
+        text = RichText(no_wrap=True, overflow="ellipsis")
+        first = True
+        for binding in self.app.BINDINGS:
+            if not binding.show:
+                continue
+            if not first:
+                text.append("  │  ", style="#3d444d")
+            first = False
+            text.append(f" {_fmt_shortcut_key(binding.key)} ", style="bold #cae8ff on #1a3a6b")
+            text.append(f" {binding.description}", style="#8b949e")
+        return text
 
 
 class TuideApp(App[None]):
@@ -507,7 +551,7 @@ class TuideApp(App[None]):
                 yield Static(self.build_status_text(), id="status-left")
                 yield Button("Editor", id="toggle-editor-btn")
                 yield Button("⎇ —", id="branch-indicator")
-        yield Footer()
+        yield ShortcutBar()
 
     def _load_workspace_state(self):
         """Load workspace state and provide a cwd fallback for first launch."""
