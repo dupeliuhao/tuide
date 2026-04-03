@@ -7,11 +7,22 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from tuide.models import GitHistoryEntry
+from tuide.models import (
+    GitCommandResult,
+    GitConflictBlock,
+    GitConflictFile,
+    GitConflictState,
+    GitHistoryEntry,
+)
 
 
 class GitService:
     """Wrapper around Git subprocess calls."""
+
+    _MERGE_BASE_MARKER = "<<<<<<< "
+    _MERGE_MID_MARKER = "======="
+    _MERGE_END_MARKER = ">>>>>>> "
+    _MERGE_BASE_SECTION = "||||||| "
 
     def _run(self, repo_root: Path, args: list[str]) -> subprocess.CompletedProcess[str] | None:
         """Run a Git command and return the completed process."""
@@ -64,6 +75,32 @@ class GitService:
         err = (result.stderr or "").strip()
         combined = "\n".join(part for part in [output, err] if part).strip()
         return True, combined or "Git command completed."
+
+    def _run_git_operation(
+        self,
+        repo_root: Path,
+        args: list[str],
+        *,
+        no_prompt: bool = False,
+        conflict_ok: bool = False,
+    ) -> GitCommandResult:
+        """Run a git command and classify divergence/conflict outcomes."""
+        success, output = self._run_with_error(repo_root, args, no_prompt=no_prompt)
+        if success:
+            return GitCommandResult(status="success", output=output)
+
+        lower_output = output.lower()
+        if (
+            "not possible to fast-forward" in lower_output
+            or "divergent branches" in lower_output
+            or "have diverged" in lower_output
+        ):
+            return GitCommandResult(status="diverged", output=output)
+
+        if conflict_ok and self.conflict_state(repo_root) is not None:
+            return GitCommandResult(status="conflict", output=output)
+
+        return GitCommandResult(status="error", output=output)
 
     def is_available(self) -> bool:
         """Return whether Git is available on PATH."""
@@ -193,19 +230,37 @@ class GitService:
             return None
         return result.stdout
 
-    def status_summary(self, repo_root: Path) -> str | None:
-        """Return a readable status summary for the repository."""
-        result = self._run(
-            repo_root,
-            ["status", "--short", "--branch"],
+    def update_current_branch(self, repo_root: Path) -> GitCommandResult:
+        """Fast-forward the current branch from its upstream, without touching others."""
+        result = self._run_git_operation(
+            repo_root, ["pull", "--ff-only"], no_prompt=True, conflict_ok=False
         )
-        if result is None:
-            return None
-        return result.stdout.strip() or "Working tree clean."
+        if result.status != "diverged":
+            return result
 
-    def pull(self, repo_root: Path) -> tuple[bool, str]:
-        """Update the current branch from its upstream."""
-        return self._run_with_error(repo_root, ["pull", "--ff-only"], no_prompt=True)
+        guidance = (
+            "Update only fast-forwards the current branch.\n"
+            "This branch has diverged from upstream. Choose merge or rebase to continue."
+        )
+        return GitCommandResult(status="diverged", output=f"{result.output}\n\n{guidance}".strip())
+
+    def merge_remote_changes(self, repo_root: Path) -> GitCommandResult:
+        """Merge upstream into the current branch, opening a conflict flow if required."""
+        return self._run_git_operation(
+            repo_root,
+            ["-c", "core.editor=true", "pull", "--no-rebase", "--no-edit"],
+            no_prompt=True,
+            conflict_ok=True,
+        )
+
+    def rebase_local_commits(self, repo_root: Path) -> GitCommandResult:
+        """Rebase local commits onto upstream, opening a conflict flow if required."""
+        return self._run_git_operation(
+            repo_root,
+            ["-c", "core.editor=true", "pull", "--rebase"],
+            no_prompt=True,
+            conflict_ok=True,
+        )
 
     def _list_remotes(self, repo_root: Path) -> list[str]:
         """Return configured remote names."""
@@ -411,6 +466,223 @@ class GitService:
     def restore_file(self, repo_root: Path, filepath: str) -> tuple[bool, str]:
         """Discard working-tree changes for one file, restoring to HEAD."""
         return self._run_with_error(repo_root, ["checkout", "HEAD", "--", filepath])
+
+    def conflict_state(self, repo_root: Path) -> GitConflictState | None:
+        """Return merge/rebase conflict state when the repository is mid-operation."""
+        operation = self._current_conflict_operation(repo_root)
+        if operation is None:
+            return None
+
+        files: list[GitConflictFile] = []
+        for filepath in self.conflicted_files(repo_root):
+            full_path = repo_root / filepath
+            try:
+                text = full_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text = ""
+            blocks = self.parse_conflict_blocks(text)
+            files.append(GitConflictFile(filepath=filepath, blocks=blocks))
+        return GitConflictState(operation=operation, files=files)
+
+    def conflicted_files(self, repo_root: Path) -> list[str]:
+        """Return repo-relative files with unresolved merge conflicts."""
+        result = self._run(repo_root, ["diff", "--name-only", "--diff-filter=U"])
+        if result is None:
+            return []
+        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+    def _current_conflict_operation(self, repo_root: Path) -> str | None:
+        """Return the current conflict operation type."""
+        git_dir = repo_root / ".git"
+        merge_head = git_dir / "MERGE_HEAD"
+        rebase_merge = git_dir / "rebase-merge"
+        rebase_apply = git_dir / "rebase-apply"
+        rebase_head = git_dir / "REBASE_HEAD"
+        if merge_head.exists():
+            return "merge"
+        if rebase_head.exists() or rebase_merge.exists() or rebase_apply.exists():
+            return "rebase"
+        return None
+
+    def continue_conflict_operation(self, repo_root: Path) -> GitCommandResult:
+        """Continue the in-progress merge or rebase after conflicts are resolved."""
+        operation = self._current_conflict_operation(repo_root)
+        if operation is None:
+            return GitCommandResult(status="error", output="No merge or rebase is in progress.")
+
+        if self.conflicted_files(repo_root):
+            return GitCommandResult(
+                status="error",
+                output="Resolve all conflicted files before continuing.",
+            )
+
+        if operation == "merge":
+            return self._run_git_operation(
+                repo_root,
+                ["-c", "core.editor=true", "merge", "--continue"],
+                conflict_ok=True,
+            )
+        return self._run_git_operation(
+            repo_root,
+            ["-c", "core.editor=true", "rebase", "--continue"],
+            conflict_ok=True,
+        )
+
+    def abort_conflict_operation(self, repo_root: Path) -> GitCommandResult:
+        """Abort the in-progress merge or rebase."""
+        operation = self._current_conflict_operation(repo_root)
+        if operation is None:
+            return GitCommandResult(status="error", output="No merge or rebase is in progress.")
+
+        if operation == "merge":
+            return self._run_git_operation(repo_root, ["merge", "--abort"], conflict_ok=False)
+        return self._run_git_operation(repo_root, ["rebase", "--abort"], conflict_ok=False)
+
+    def mark_conflict_resolved(self, repo_root: Path, filepath: str) -> tuple[bool, str]:
+        """Stage a conflicted file after markers are removed."""
+        full_path = repo_root / filepath
+        try:
+            text = full_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as error:
+            return False, str(error)
+
+        if self.parse_conflict_blocks(text):
+            return False, "Conflict markers remain in the file. Resolve them before marking resolved."
+
+        return self._run_with_error(repo_root, ["add", "--", filepath])
+
+    def apply_conflict_choice(
+        self, repo_root: Path, filepath: str, block_index: int, choice: str
+    ) -> tuple[bool, str]:
+        """Apply a resolution choice to one conflict block in a file."""
+        full_path = repo_root / filepath
+        try:
+            text = full_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as error:
+            return False, str(error)
+
+        blocks = self.parse_conflict_blocks(text)
+        block = next((candidate for candidate in blocks if candidate.index == block_index), None)
+        if block is None:
+            return False, "Unable to locate the selected conflict block."
+
+        replacement = self._conflict_choice_text(block, choice)
+        if replacement is None:
+            return False, f"Unknown conflict choice: {choice}"
+
+        updated = text[: block.start_offset] + replacement + text[block.end_offset :]
+        try:
+            full_path.write_text(updated, encoding="utf-8")
+        except OSError as error:
+            return False, str(error)
+        return True, f"Applied {choice} to {Path(filepath).name}."
+
+    def parse_conflict_blocks(self, text: str) -> list[GitConflictBlock]:
+        """Parse merge conflict markers from a text file."""
+        if self._MERGE_BASE_MARKER not in text:
+            return []
+
+        lines = text.splitlines(keepends=True)
+        blocks: list[GitConflictBlock] = []
+        line_no = 1
+        offset = 0
+        index = 0
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            if not line.startswith(self._MERGE_BASE_MARKER):
+                offset += len(line)
+                line_no += 1
+                i += 1
+                continue
+
+            start_line = line_no
+            start_offset = offset
+            ours_label = line[len(self._MERGE_BASE_MARKER) :].rstrip("\n")
+            i += 1
+            line_no += 1
+            offset += len(line)
+
+            ours_lines: list[str] = []
+            base_lines: list[str] = []
+            theirs_lines: list[str] = []
+
+            while i < len(lines) and not (
+                lines[i].startswith(self._MERGE_BASE_SECTION) or lines[i].startswith(self._MERGE_MID_MARKER)
+            ):
+                ours_lines.append(lines[i])
+                offset += len(lines[i])
+                line_no += 1
+                i += 1
+
+            if i < len(lines) and lines[i].startswith(self._MERGE_BASE_SECTION):
+                base_marker = lines[i]
+                i += 1
+                line_no += 1
+                offset += len(base_marker)
+                while i < len(lines) and not lines[i].startswith(self._MERGE_MID_MARKER):
+                    base_lines.append(lines[i])
+                    offset += len(lines[i])
+                    line_no += 1
+                    i += 1
+
+            if i >= len(lines) or not lines[i].startswith(self._MERGE_MID_MARKER):
+                break
+
+            divider = lines[i]
+            i += 1
+            line_no += 1
+            offset += len(divider)
+
+            while i < len(lines) and not lines[i].startswith(self._MERGE_END_MARKER):
+                theirs_lines.append(lines[i])
+                offset += len(lines[i])
+                line_no += 1
+                i += 1
+
+            if i >= len(lines) or not lines[i].startswith(self._MERGE_END_MARKER):
+                break
+
+            end_marker = lines[i]
+            theirs_label = end_marker[len(self._MERGE_END_MARKER) :].rstrip("\n")
+            i += 1
+            end_offset = offset + len(end_marker)
+            end_line = line_no
+            line_no += 1
+            offset = end_offset
+
+            blocks.append(
+                GitConflictBlock(
+                    index=index,
+                    start_line=start_line,
+                    end_line=end_line,
+                    start_offset=start_offset,
+                    end_offset=end_offset,
+                    ours_label=ours_label or "Current",
+                    theirs_label=theirs_label or "Incoming",
+                    ours_text="".join(ours_lines),
+                    theirs_text="".join(theirs_lines),
+                    base_text="".join(base_lines),
+                )
+            )
+            index += 1
+        return blocks
+
+    @staticmethod
+    def _conflict_choice_text(block: GitConflictBlock, choice: str) -> str | None:
+        """Return replacement text for a conflict-resolution choice."""
+        normalized = choice.lower()
+        if normalized == "ours":
+            return block.ours_text
+        if normalized == "theirs":
+            return block.theirs_text
+        if normalized == "both":
+            pieces = [block.ours_text]
+            if block.ours_text and block.theirs_text and not block.ours_text.endswith("\n"):
+                pieces.append("\n")
+            pieces.append(block.theirs_text)
+            return "".join(pieces)
+        return None
 
     def push(self, repo_root: Path) -> tuple[bool, str]:
         """Push the current branch to its configured upstream."""

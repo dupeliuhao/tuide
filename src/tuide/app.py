@@ -34,6 +34,7 @@ from tuide.widgets.dialogs import (
     PromptDialog,
 )
 from tuide.widgets.editor import EditorPanel, WrappingTabBar
+from tuide.widgets.gitconflicts import GitConflictResolverView
 from tuide.widgets.githistory import GitChangedFilesView, GitLogView
 from tuide.widgets.menubar import MenuBar
 from tuide.widgets.panels import WorkspacePanel
@@ -1464,6 +1465,85 @@ class TuideApp(App[None]):
             first_line = "unknown error"
         return f"{action} failed: {first_line}"
 
+    async def _refresh_repo_after_git_change(
+        self,
+        repo_root: Path,
+        *,
+        reload_documents: bool = False,
+    ) -> None:
+        """Refresh branch state, dirty markers, and open docs after a git operation."""
+        self._refresh_branch_indicator()
+        self._refresh_dirty_tree()
+        if reload_documents:
+            try:
+                editor = self.query_one(EditorPanel)
+            except Exception:
+                editor = None
+            if editor is not None:
+                editor.refresh_repo_documents(
+                    repo_root,
+                    lambda path: self.git_service.show_file(repo_root, "HEAD", path),
+                )
+        self.refresh_status()
+
+    def _sync_open_file_with_git(self, repo_root: Path, path: Path) -> None:
+        """Reload one open file against disk and HEAD after a conflict action."""
+        try:
+            editor = self.query_one(EditorPanel)
+        except Exception:
+            return
+        editor.sync_file_with_git(path, self.git_service.show_file(repo_root, "HEAD", path))
+        self._refresh_dirty_tree()
+        self.refresh_status()
+
+    async def _show_conflict_resolver(self, repo_root: Path) -> bool:
+        """Open or refresh the conflict resolver tab when a merge/rebase is active."""
+        state = await asyncio.to_thread(self.git_service.conflict_state, repo_root)
+        editor = self.query_one(EditorPanel)
+        if state is None:
+            await editor.close_virtual_tab("Git Conflicts")
+            self.refresh_status()
+            return False
+        view = GitConflictResolverView(state, repo_root)
+        await editor.open_widget_tab("Git Conflicts", view, always_replace=True)
+        self.refresh_status()
+        return True
+
+    async def _continue_diverged_update(self, repo_root: Path, strategy: str) -> None:
+        """Continue an Update flow with an explicit merge or rebase strategy."""
+        if strategy == "rebase":
+            action_name = "Rebase"
+            title = "git:update:rebase"
+            func = self.git_service.rebase_local_commits
+            progress = "Rebasing local commits onto upstream…"
+            success_message = "Current branch updated via rebase"
+        else:
+            action_name = "Merge"
+            title = "git:update:merge"
+            func = self.git_service.merge_remote_changes
+            progress = "Merging remote changes into current branch…"
+            success_message = "Current branch updated via merge"
+
+        self.notify(progress, severity="information")
+        result = await asyncio.to_thread(func, repo_root)
+        await self.open_git_output_tab(title, repo_root, result.output)
+
+        if result.status == "success":
+            await self._refresh_repo_after_git_change(repo_root, reload_documents=True)
+            self.notify(success_message)
+            return
+
+        if result.status == "conflict":
+            await self._refresh_repo_after_git_change(repo_root, reload_documents=True)
+            await self._show_conflict_resolver(repo_root)
+            self.notify(
+                f"{action_name} hit conflicts. Resolve them in Git Conflicts, then continue.",
+                severity="warning",
+            )
+            return
+
+        self.notify(self._git_error_summary(action_name, result.output), severity="error")
+
     async def action_git_session(self) -> None:
         """Open project-level Git actions from the top bar."""
         repo_root = self.active_repo_root()
@@ -1476,9 +1556,9 @@ class TuideApp(App[None]):
                 f"Git - {repo_root.name} ({branch})",
                 [
                     ChoiceItem(
-                        id="git.session.pull",
-                        label="Update Project",
-                        description="Pull latest changes with ff-only",
+                        id="git.session.update",
+                        label="Update",
+                        description="Fast-forward the current branch from upstream",
                     ),
                     ChoiceItem(
                         id="git.session.commit",
@@ -1498,12 +1578,7 @@ class TuideApp(App[None]):
                     ChoiceItem(
                         id="git.session.fetch",
                         label="Fetch",
-                        description="Refresh remote branches without merging",
-                    ),
-                    ChoiceItem(
-                        id="git.session.status",
-                        label="Status",
-                        description="Show branch and working tree changes",
+                        description="Refresh remote refs and branch info without changing files",
                     ),
                     ChoiceItem(
                         id="git.session.branch_history",
@@ -1521,21 +1596,48 @@ class TuideApp(App[None]):
             await self.action_git_branch_history()
             return
 
-        if action_id == "git.session.status":
-            status = self.git_service.status_summary(repo_root)
-            if status is None:
-                self.notify("Unable to read Git status", severity="error")
+        if action_id == "git.session.update":
+            self.notify("Updating current branch…", severity="information")
+            result = await asyncio.to_thread(
+                self.git_service.update_current_branch, repo_root
+            )
+            await self.open_git_output_tab("git:update", repo_root, result.output)
+            if result.status == "success":
+                await self._refresh_repo_after_git_change(repo_root, reload_documents=True)
+                self.notify("Current branch updated")
                 return
-            await self.open_git_output_tab("git:status", repo_root, status)
-            return
-
-        if action_id == "git.session.pull":
-            self.notify("Pulling…", severity="information")
-            success, output = await asyncio.to_thread(self.git_service.pull, repo_root)
-            await self.open_git_output_tab("git:update", repo_root, output)
+            if result.status == "diverged":
+                choice = await self.wait_for_screen_result(
+                    OptionPickerDialog(
+                        "Current branch has diverged from upstream",
+                        [
+                            ChoiceItem(
+                                id="git.update.rebase",
+                                label="Rebase Local Commits",
+                                description="Replay your local commits on top of upstream",
+                            ),
+                            ChoiceItem(
+                                id="git.update.merge",
+                                label="Merge Remote Changes",
+                                description="Create a merge commit if needed",
+                            ),
+                            ChoiceItem(
+                                id="git.update.cancel",
+                                label="Cancel",
+                                description="Leave the branch unchanged",
+                            ),
+                        ],
+                        placeholder="Choose how to continue",
+                    )
+                )
+                if choice == "git.update.rebase":
+                    await self._continue_diverged_update(repo_root, "rebase")
+                elif choice == "git.update.merge":
+                    await self._continue_diverged_update(repo_root, "merge")
+                return
             self.notify(
-                "Project updated" if success else self._git_error_summary("Git pull", output),
-                severity="information" if success else "error",
+                self._git_error_summary("Update", result.output),
+                severity="error",
             )
             return
 
@@ -1674,6 +1776,106 @@ class TuideApp(App[None]):
             f"Commit {commit[:8]}", view, always_replace=True
         )
         self.refresh_status()
+
+    async def on_git_conflict_resolver_view_refresh_requested(
+        self,
+        event: GitConflictResolverView.RefreshRequested,
+    ) -> None:
+        """Reload the conflict resolver from current disk and git state."""
+        await self._show_conflict_resolver(event.repo_root)
+        self._refresh_dirty_tree()
+
+    async def on_git_conflict_resolver_view_apply_choice(
+        self,
+        event: GitConflictResolverView.ApplyChoice,
+    ) -> None:
+        """Apply ours/theirs/both to the selected conflict block."""
+        success, output = await asyncio.to_thread(
+            self.git_service.apply_conflict_choice,
+            event.repo_root,
+            event.filepath,
+            event.block_index,
+            event.choice,
+        )
+        if not success:
+            self.notify(output, severity="error")
+            return
+        self._sync_open_file_with_git(event.repo_root, event.repo_root / event.filepath)
+        await self._show_conflict_resolver(event.repo_root)
+        self.notify(output)
+
+    async def on_git_conflict_resolver_view_edit_manually(
+        self,
+        event: GitConflictResolverView.EditManually,
+    ) -> None:
+        """Open the conflicted file for manual editing."""
+        path = event.repo_root / event.filepath
+        if not path.exists():
+            self.notify("This conflicted file is not present in the working tree.", severity="error")
+            return
+        await self._open_location(path, event.start_line, 1)
+        self.notify(
+            "Edit the file, then return to Git Conflicts and choose Mark Resolved.",
+            severity="information",
+        )
+
+    async def on_git_conflict_resolver_view_mark_resolved(
+        self,
+        event: GitConflictResolverView.MarkResolved,
+    ) -> None:
+        """Stage a manually resolved file and refresh conflict state."""
+        success, output = await asyncio.to_thread(
+            self.git_service.mark_conflict_resolved,
+            event.repo_root,
+            event.filepath,
+        )
+        if not success:
+            self.notify(output, severity="error")
+            return
+        self._sync_open_file_with_git(event.repo_root, event.repo_root / event.filepath)
+        await self._show_conflict_resolver(event.repo_root)
+        self.notify(output)
+
+    async def on_git_conflict_resolver_view_continue_requested(
+        self,
+        event: GitConflictResolverView.ContinueRequested,
+    ) -> None:
+        """Continue the active merge or rebase after resolution."""
+        self.notify("Continuing update…", severity="information")
+        result = await asyncio.to_thread(
+            self.git_service.continue_conflict_operation,
+            event.repo_root,
+        )
+        await self.open_git_output_tab("git:update:continue", event.repo_root, result.output)
+        if result.status == "success":
+            await self._refresh_repo_after_git_change(event.repo_root, reload_documents=True)
+            await self.query_one(EditorPanel).close_virtual_tab("Git Conflicts")
+            self.notify("Update completed")
+            return
+        if result.status == "conflict":
+            await self._refresh_repo_after_git_change(event.repo_root, reload_documents=True)
+            await self._show_conflict_resolver(event.repo_root)
+            self.notify("More conflicts need resolution before the update can finish.", severity="warning")
+            return
+        self.notify(self._git_error_summary("Continue", result.output), severity="error")
+
+    async def on_git_conflict_resolver_view_abort_requested(
+        self,
+        event: GitConflictResolverView.AbortRequested,
+    ) -> None:
+        """Abort the active merge or rebase and restore the repo to a clean branch state."""
+        self.notify("Aborting update…", severity="information")
+        result = await asyncio.to_thread(
+            self.git_service.abort_conflict_operation,
+            event.repo_root,
+        )
+        await self.open_git_output_tab("git:update:abort", event.repo_root, result.output)
+        if result.status == "success":
+            await self._refresh_repo_after_git_change(event.repo_root, reload_documents=True)
+            await self.query_one(EditorPanel).close_virtual_tab("Git Conflicts")
+            self.notify("Update aborted")
+            return
+        self.notify(self._git_error_summary("Abort", result.output), severity="error")
 
     async def on_git_changed_files_view_file_selected(
         self, event: GitChangedFilesView.FileSelected

@@ -536,6 +536,43 @@ class EditorPanel(Vertical):
         doc.dirty = doc.git_head_text is not None and content != doc.git_head_text
         self._sync_tab_bar()
 
+    def sync_file_with_git(self, path: Path, git_head_text: str | None) -> None:
+        """Refresh one open document from disk against the provided Git HEAD text."""
+        pane_id = self._pane_id_for_path(path)
+        doc = self.documents.get(pane_id)
+        if doc is None:
+            return
+
+        doc.git_head_text = git_head_text
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return
+
+        try:
+            ta = self.query_one(f"#editor-{pane_id}", TextArea)
+            cursor = ta.cursor_location
+            ta.load_text(content)
+            try:
+                ta.cursor_location = cursor
+                ta.scroll_cursor_visible()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+        doc.dirty = git_head_text is not None and content != git_head_text
+        self._sync_tab_bar()
+
+    def refresh_repo_documents(self, repo_root: Path, git_head_lookup) -> None:
+        """Refresh all open documents within one repository from disk and HEAD."""
+        for doc in self.documents.values():
+            try:
+                doc.path.relative_to(repo_root)
+            except ValueError:
+                continue
+            self.sync_file_with_git(doc.path, git_head_lookup(doc.path))
+
     def mark_all_as_clean(self) -> None:
         """After a commit, update git_head_text for every open doc to its current content."""
         for pane_id, doc in self.documents.items():
@@ -622,6 +659,10 @@ class EditorPanel(Vertical):
         self._show_pane(pane_id)
         self._sync_tab_bar()
         return pane_id
+
+    async def close_virtual_tab(self, title: str) -> None:
+        """Close a non-file tab by its title when it is open."""
+        await self._close_pane_by_id(self._pane_id_for_virtual_title(title))
 
     async def open_diff_tab(
         self,

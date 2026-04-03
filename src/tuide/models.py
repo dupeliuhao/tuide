@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 
 @dataclass(slots=True)
@@ -69,3 +70,43 @@ class GitHistoryEntry:
     author: str
     subject: str
     unpushed: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class GitCommandResult:
+    """Structured result for git operations that can branch into follow-up UI."""
+
+    status: Literal["success", "diverged", "conflict", "error"]
+    output: str
+
+
+@dataclass(frozen=True, slots=True)
+class GitConflictBlock:
+    """A single conflict marker block parsed from a file in the working tree."""
+
+    index: int
+    start_line: int
+    end_line: int
+    start_offset: int
+    end_offset: int
+    ours_label: str
+    theirs_label: str
+    ours_text: str
+    theirs_text: str
+    base_text: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class GitConflictFile:
+    """Conflict state for a single file."""
+
+    filepath: str
+    blocks: list[GitConflictBlock]
+
+
+@dataclass(frozen=True, slots=True)
+class GitConflictState:
+    """Current merge/rebase conflict session for a repository."""
+
+    operation: Literal["merge", "rebase"]
+    files: list[GitConflictFile]
