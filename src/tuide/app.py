@@ -1497,6 +1497,22 @@ class TuideApp(App[None]):
         self._refresh_dirty_tree()
         self.refresh_status()
 
+    async def _close_git_update_tabs(self) -> None:
+        """Close transient tabs created by the update/conflict workflow."""
+        try:
+            editor = self.query_one(EditorPanel)
+        except Exception:
+            return
+        for title in (
+            "Git Conflicts",
+            "git:update",
+            "git:update:rebase",
+            "git:update:merge",
+            "git:update:continue",
+            "git:update:abort",
+        ):
+            await editor.close_virtual_tab(title)
+
     async def _show_conflict_resolver(self, repo_root: Path) -> bool:
         """Open or refresh the conflict resolver tab when a merge/rebase is active."""
         state = await asyncio.to_thread(self.git_service.conflict_state, repo_root)
@@ -1542,6 +1558,7 @@ class TuideApp(App[None]):
 
         if result.status == "success":
             await self._refresh_repo_after_git_change(repo_root, reload_documents=True)
+            await self._close_git_update_tabs()
             self.notify(success_message)
             return
 
@@ -1867,7 +1884,7 @@ class TuideApp(App[None]):
         await self.open_git_output_tab("git:update:continue", event.repo_root, result.output)
         if result.status == "success":
             await self._refresh_repo_after_git_change(event.repo_root, reload_documents=True)
-            await self.query_one(EditorPanel).close_virtual_tab("Git Conflicts")
+            await self._close_git_update_tabs()
             self.notify("Update completed")
             return
         if result.status == "conflict":
@@ -1890,7 +1907,7 @@ class TuideApp(App[None]):
         await self.open_git_output_tab("git:update:abort", event.repo_root, result.output)
         if result.status == "success":
             await self._refresh_repo_after_git_change(event.repo_root, reload_documents=True)
-            await self.query_one(EditorPanel).close_virtual_tab("Git Conflicts")
+            await self._close_git_update_tabs()
             self.notify("Update aborted")
             return
         self.notify(self._git_error_summary("Abort", result.output), severity="error")
