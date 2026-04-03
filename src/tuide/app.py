@@ -1439,7 +1439,8 @@ class TuideApp(App[None]):
         """Open Git command output in a result tab."""
         branch = self.git_service.current_branch(repo_root) or "detached"
         text = f"Repo: {repo_root}\nBranch: {branch}\n\n{output}"
-        await self.query_one(EditorPanel).open_readonly_tab(title, text)
+        editor = self.screen_stack[0].query_one(EditorPanel)
+        await editor.open_readonly_tab(title, text)
         self.refresh_status()
 
     async def action_git_session(self) -> None:
@@ -1557,9 +1558,15 @@ class TuideApp(App[None]):
             )
             if not message:
                 return
-            success, output = self.git_service.commit_all(repo_root, str(message))
+            success, output = await asyncio.to_thread(
+                self.git_service.commit_all, repo_root, str(message)
+            )
             await self.open_git_output_tab("git:commit", repo_root, output)
-            self.notify("Commit created" if success else "Commit failed", severity="information" if success else "error")
+            if success:
+                self.notify("Commit created")
+            else:
+                first_line = output.splitlines()[0] if output else "unknown error"
+                self.notify(f"Commit failed: {first_line}", severity="error")
             return
 
         if action_id == "git.session.push":
