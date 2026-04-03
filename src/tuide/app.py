@@ -125,7 +125,7 @@ class ShortcutBar(Widget):
         for start, end, action in self._regions:
             if start <= event.x < end:
                 event.stop()
-                self.app.run_action(action)
+                self.run_worker(self.app.run_action(action), exclusive=False)
                 return
 
 
@@ -547,12 +547,11 @@ class TuideApp(App[None]):
         Binding("escape", "escape_focus", "Dismiss", show=False),
         Binding("tab", "focus_next", "Next Focus", show=False),
         Binding("shift+tab", "focus_previous", "Prev Focus", show=False),
-        Binding("ctrl+shift+p", "show_command_palette", "Palette"),
-        Binding("ctrl+p", "quick_open", "Quick Open"),
-        Binding("ctrl+s", "save_file", "Save", priority=True),
+        Binding("ctrl+shift+p", "show_command_palette", "Palette", show=False),
+        Binding("ctrl+p", "quick_open", "Quick Open", show=False),
         Binding("ctrl+z", "undo_in_editor", "Undo", show=False),
         Binding("ctrl+shift+z", "redo_in_editor", "Redo", show=False),
-        Binding("ctrl+w", "close_tab", "Close Tab", priority=True),
+        Binding("ctrl+w", "close_tab", "Close Tab", show=False, priority=True),
         Binding("ctrl+f", "find_in_file", "Find", priority=True),
         Binding("ctrl+shift+f", "find_in_workspace", "Find in Workspace", priority=True),
         Binding("ctrl+.", "show_context_actions", "Context Actions", priority=True),
@@ -852,19 +851,6 @@ class TuideApp(App[None]):
         if button_id is None:
             return
 
-        if len(self.screen_stack) > 1:
-            top_screen = self.screen_stack[-1]
-            if button_id in {"confirm-cancel", "prompt-cancel", "palette-cancel", "picker-cancel", "help-close"}:
-                top_screen.dismiss(None)
-                return
-            if button_id == "confirm-ok":
-                top_screen.dismiss(True)
-                return
-            if button_id == "prompt-ok":
-                prompt_input = top_screen.query_one("#prompt-input", Input)
-                top_screen.dismiss(prompt_input.value)
-                return
-
         if button_id == "toggle-editor-btn":
             self.action_toggle_editor()
             return
@@ -996,16 +982,10 @@ class TuideApp(App[None]):
 
     async def _show_tab_context_menu(self, x: int, y: int) -> None:
         """Show a right-click context menu for the editor tab bar."""
-        editor = self.query_one(EditorPanel)
-        items: list[ChoiceItem] = []
-        if editor.active_document is not None:
-            items.append(ChoiceItem("tab.save", "Save file"))
-        items.append(ChoiceItem("tab.close", "Close tab"))
+        items = [ChoiceItem("tab.close", "Close tab")]
 
         action_id = await self.wait_for_screen_result(ContextMenuScreen(items, x, y))
-        if action_id == "tab.save":
-            self.action_save_file()
-        elif action_id == "tab.close":
+        if action_id == "tab.close":
             await self.action_close_tab()
 
     async def _show_editor_context_menu(self, x: int, y: int) -> None:
@@ -1033,7 +1013,6 @@ class TuideApp(App[None]):
             ChoiceItem("ctx.definition", "Go to definition"),
             ChoiceItem("ctx.references", "Find references"),
             ChoiceItem("ctx.python_outline", "Python outline"),
-            ChoiceItem("ctx.save", "Save file"),
         ]
 
         action_id = await self.wait_for_screen_result(ContextMenuScreen(items, x, y))
@@ -1059,8 +1038,6 @@ class TuideApp(App[None]):
                     await editor.open_readonly_tab(f"line-history:{path.name}:{start}-{end}", history)
                 else:
                     self.notify("No line history found", severity="warning")
-        elif action_id == "ctx.save":
-            self.action_save_file()
         elif action_id in {"ctx.git_diff", "ctx.git_history", "ctx.git_blame",
                            "ctx.definition", "ctx.references", "ctx.python_outline"}:
             mapping = {
@@ -1107,13 +1084,6 @@ class TuideApp(App[None]):
         panel = self.query_one("#terminal-panel")
         panel.display = not panel.display
         self.sync_splitter_visibility()
-        self.refresh_status()
-
-    def action_save_file(self) -> None:
-        """Save the active file if one is open."""
-        saved = self.query_one(EditorPanel).save_active_file()
-        if saved is not None:
-            self.notify(f"Saved {saved.name}")
         self.refresh_status()
 
     def action_undo_in_editor(self) -> None:
@@ -1264,7 +1234,6 @@ class TuideApp(App[None]):
             title = "Terminal actions"
         else:
             items = [
-                ChoiceItem("file.save", "Save active file"),
                 ChoiceItem("file.close", "Close active tab"),
                 ChoiceItem("search.find_file", "Find in file"),
                 ChoiceItem("git.diff", "Git diff with branch"),
@@ -1282,9 +1251,6 @@ class TuideApp(App[None]):
             OptionPickerDialog(title, items, placeholder="Filter actions")
         )
         if action_id is None:
-            return
-        if action_id == "file.save":
-            self.action_save_file()
             return
         if action_id == "file.close":
             await self.action_close_tab()

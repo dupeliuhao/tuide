@@ -548,14 +548,6 @@ class EditorPanel(Vertical):
             doc.dirty = False
         self._sync_tab_bar()
 
-    def save_active_file(self) -> Path | None:
-        doc = self.active_document
-        editor = self.active_text_area
-        if doc is None or editor is None:
-            return None
-        doc.path.write_text(editor.text, encoding="utf-8")
-        return doc.path
-
     async def close_active_tab(self) -> Path | None:
         active_id = self._current_pane
         if not active_id:

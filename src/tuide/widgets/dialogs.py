@@ -121,6 +121,7 @@ class ConfirmDialog(EscapeDismissMixin, ModalScreen[bool | None]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
+        event.stop()
         if event.button.id == "confirm-ok":
             self.dismiss(True)
             return
@@ -178,7 +179,6 @@ class HelpDialog(EscapeDismissMixin, ModalScreen[None]):
             yield Label("tuide keybindings", id="help-title")
             yield Label("Tab / Shift+Tab  cycle focus between panels", classes="help-line")
             yield Label("Esc              return focus to the editor", classes="help-line")
-            yield Label("Ctrl+S           save active file", classes="help-line")
             yield Label("Ctrl+Z           undo last edit", classes="help-line")
             yield Label("Ctrl+Shift+Z     redo last undone edit", classes="help-line")
             yield Label("Ctrl+W           close active tab", classes="help-line")
@@ -199,6 +199,7 @@ class HelpDialog(EscapeDismissMixin, ModalScreen[None]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Dismiss on button press."""
+        event.stop()
         if event.button.id == "help-close":
             self.dismiss(None)
 
@@ -278,6 +279,7 @@ class PromptDialog(EscapeDismissMixin, ModalScreen[str | None]):
         self.dismiss(self.query_one("#prompt-input", Input).value)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
         if event.button.id == "prompt-ok":
             self.dismiss(self.query_one("#prompt-input", Input).value)
             return
@@ -353,6 +355,7 @@ class CommandPaletteDialog(EscapeDismissMixin, ModalScreen[str | None]):
         self.dismiss(None)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
         if event.button.id == "palette-cancel":
             self.dismiss(None)
 
@@ -467,6 +470,7 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
         self.dismiss(None)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
         if event.button.id == "picker-cancel":
             self.dismiss(None)
 
