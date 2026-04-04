@@ -1475,6 +1475,14 @@ class TuideApp(App[None]):
         await editor.open_readonly_tab(title, text)
         self.refresh_status()
 
+    async def _close_git_output_tabs(self, *titles: str) -> None:
+        """Close transient Git result tabs when the command succeeded."""
+        editor = self._main_editor_panel()
+        if editor is None:
+            return
+        for title in titles:
+            await editor.close_virtual_tab(title)
+
     def _git_error_summary(self, action: str, output: str) -> str:
         """Return a compact notification message for a failed Git action."""
         first_line = output.splitlines()[0].strip() if output else ""
@@ -1783,8 +1791,10 @@ class TuideApp(App[None]):
                     )
                     await self.open_git_output_tab("git:push", repo_root, push_output)
                     if push_success:
+                        await self._close_git_output_tabs("git:commit", "git:push")
                         self.notify("Commit created and pushed")
                     else:
+                        await self._close_git_output_tabs("git:commit")
                         first_line = (
                             push_output.splitlines()[0] if push_output else "unknown error"
                         )
@@ -1793,6 +1803,7 @@ class TuideApp(App[None]):
                             severity="error",
                         )
                 else:
+                    await self._close_git_output_tabs("git:commit")
                     self.notify("Commit created")
             else:
                 first_line = output.splitlines()[0] if output else "unknown error"
@@ -1803,6 +1814,8 @@ class TuideApp(App[None]):
             self.notify("Pushing…", severity="information")
             success, output = await asyncio.to_thread(self.git_service.push, repo_root)
             await self.open_git_output_tab("git:push", repo_root, output)
+            if success:
+                await self._close_git_output_tabs("git:push")
             self.notify(
                 "Push completed" if success else self._git_error_summary("Push", output),
                 severity="information" if success else "error",
