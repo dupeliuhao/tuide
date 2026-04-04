@@ -36,7 +36,7 @@ from tuide.widgets.dialogs import (
 )
 from tuide.widgets.editor import EditorPanel, WrappingTabBar
 from tuide.widgets.gitconflicts import GitConflictResolverScreen, GitConflictResolverView
-from tuide.widgets.githistory import GitChangedFilesView, GitLogView
+from tuide.widgets.githistory import GitChangedFilesView, GitHistoryBrowserView, GitLogView
 from tuide.widgets.menubar import MenuBar
 from tuide.widgets.panels import WorkspacePanel
 from tuide.widgets.splitter import VerticalSplitter
@@ -2003,7 +2003,12 @@ class TuideApp(App[None]):
         if not entries:
             self.notify("No commits found in this repository", severity="warning")
             return
-        view = GitLogView(branch=branch, entries=entries, repo_root=repo_root)
+        view = GitHistoryBrowserView(
+            branch=branch,
+            entries=entries,
+            repo_root=repo_root,
+            git_service=self.git_service,
+        )
         await self.query_one(EditorPanel).open_widget_tab("Git Log", view, always_replace=True)
         self.refresh_status()
 

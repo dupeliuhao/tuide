@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
-from textual import events
+from textual import events, on
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical
 from textual.message import Message
-from textual.widgets import Label, ListItem, ListView, Static
+from textual.widgets import Button, Label, ListItem, ListView, Static
+
+from tuide.models import GitHistoryEntry
+from tuide.widgets.diffview import DiffView
 
 
 class _HoverListView(ListView):
@@ -40,6 +45,18 @@ class _HoverListView(ListView):
 
     def on_leave(self) -> None:
         self.remove_class("pointer-hover")
+
+
+class _HistoryNavListView(_HoverListView):
+    """Navigation list that can step back one layer with Escape."""
+
+    BINDINGS = [*ListView.BINDINGS, Binding("escape", "back", "Back", show=False)]
+
+    class BackRequested(Message):
+        """Request to step back inside the branch-history workflow."""
+
+    def action_back(self) -> None:
+        self.post_message(self.BackRequested())
 
 
 class _CommitItem(ListItem):
@@ -212,3 +229,275 @@ class GitChangedFilesView(Vertical):
                     repo_root=self._repo_root,
                 )
             )
+
+
+class GitHistoryBrowserView(Vertical):
+    """Single-tab branch history browser: commits -> files -> diff."""
+
+    DEFAULT_CSS = """
+    GitHistoryBrowserView {
+        height: 1fr;
+        background: #0d1117;
+    }
+
+    #history-header {
+        height: 1;
+        padding: 0 1;
+        background: #161b22;
+        color: #8b949e;
+    }
+
+    #history-body {
+        height: 1fr;
+    }
+
+    #history-nav-panel {
+        width: 30%;
+        border-right: solid #21262d;
+    }
+
+    #history-diff-panel {
+        width: 1fr;
+    }
+
+    #history-nav-header,
+    #history-diff-header {
+        height: 1;
+        background: #21262d;
+        color: #8b949e;
+        padding: 0 1;
+    }
+
+    #history-nav-title {
+        width: 1fr;
+        height: 1;
+        content-align: left middle;
+    }
+
+    #history-nav-back {
+        width: auto;
+        min-width: 0;
+        height: 1;
+        padding: 0 1;
+        margin: 0;
+        display: none;
+    }
+
+    #history-nav-list {
+        height: 1fr;
+        background: #0d1117;
+        border: none;
+        padding: 0;
+    }
+
+    #history-nav-list > ListItem {
+        background: #0d1117;
+        padding: 0 1;
+    }
+
+    #history-nav-list > ListItem.--highlight {
+        background: #1f2d3d;
+    }
+
+    #history-nav-list.pointer-hover > ListItem.--highlight {
+        background: #8a5a16;
+    }
+
+    #history-nav-list Static {
+        background: transparent;
+    }
+
+    #history-diff-container {
+        height: 1fr;
+        background: #0d1117;
+        border: none;
+    }
+
+    #history-diff-container DiffView {
+        height: 1fr;
+    }
+
+    .history-empty {
+        color: #6e7681;
+        padding: 1;
+    }
+    """
+
+    def __init__(
+        self,
+        branch: str,
+        entries: list[GitHistoryEntry],
+        repo_root: Path,
+        git_service,
+    ) -> None:
+        super().__init__()
+        self._branch = branch
+        self._entries = entries
+        self._repo_root = repo_root
+        self._git_service = git_service
+        self._mode = "commits"
+        self._current_commit_index: int | None = None
+        self._current_file_index: int | None = None
+        self._current_files: list[tuple[str, str, str | None]] = []
+
+    def compose(self) -> ComposeResult:
+        count = len(self._entries)
+        yield Label(
+            f" [bold #79c0ff]{self._branch}[/]"
+            f"  [dim #8b949e]{count} commit{'s' if count != 1 else ''}[/]"
+            "  [dim]Enter / click to drill in • Esc to go back[/]",
+            id="history-header",
+            markup=True,
+        )
+        with Horizontal(id="history-body"):
+            with Vertical(id="history-nav-panel"):
+                with Horizontal(id="history-nav-header"):
+                    yield Label("Commits", id="history-nav-title")
+                    yield Button("Back", id="history-nav-back", classes="dismiss-button")
+                yield _HistoryNavListView(id="history-nav-list")
+            with Vertical(id="history-diff-panel"):
+                yield Label("Select a commit, then a file to preview its diff", id="history-diff-header")
+                yield Vertical(id="history-diff-container")
+
+    def on_mount(self) -> None:
+        self._show_commits()
+        try:
+            self.query_one("#history-nav-list", ListView).focus()
+        except Exception:
+            pass
+
+    def _show_commits(self) -> None:
+        self._mode = "commits"
+        self._current_commit_index = None
+        self._current_file_index = None
+        self._current_files = []
+        nav_title = self.query_one("#history-nav-title", Label)
+        nav_list = self.query_one("#history-nav-list", ListView)
+        back = self.query_one("#history-nav-back", Button)
+        nav_title.update("Commits")
+        back.display = False
+        nav_list.clear()
+        if not self._entries:
+            nav_list.append(ListItem(Label("No commits found", classes="history-empty")))
+            self._show_diff(None)
+            return
+        for entry in self._entries:
+            nav_list.append(_CommitItem(entry.commit, entry.date, entry.author, entry.subject, entry.unpushed))
+        nav_list.index = 0
+        self.query_one("#history-diff-header", Label).update("Select a commit, then a file to preview its diff")
+        self._show_diff(None)
+
+    def _show_files_for_commit(self, index: int | None) -> None:
+        self._mode = "files"
+        self._current_commit_index = index
+        nav_list = self.query_one("#history-nav-list", ListView)
+        nav_title = self.query_one("#history-nav-title", Label)
+        back = self.query_one("#history-nav-back", Button)
+        nav_list.clear()
+        self._current_files = []
+        self._current_file_index = None
+
+        if index is None or index < 0 or index >= len(self._entries):
+            nav_title.update("Changed Files")
+            back.display = True
+            self._show_diff(None)
+            return
+
+        entry = self._entries[index]
+        self._current_files = self._git_service.files_changed_in_commit(self._repo_root, entry.commit)
+        nav_title.update(f"Files in {entry.commit[:8]}")
+        back.display = True
+        if not self._current_files:
+            nav_list.append(ListItem(Label("No file changes recorded", classes="history-empty")))
+            self._show_diff(None)
+            return
+        for status, filepath, old_filepath in self._current_files:
+            nav_list.append(_ChangedFileItem(status, filepath, old_filepath))
+        nav_list.index = 0
+        self._show_diff(0)
+
+    def _show_diff(self, index: int | None) -> None:
+        self._current_file_index = index
+        self.run_worker(self._load_diff(index), exclusive=True, group="branch-history-diff")
+
+    async def _load_diff(self, index: int | None) -> None:
+        try:
+            header = self.query_one("#history-diff-header", Label)
+            container = self.query_one("#history-diff-container", Vertical)
+        except Exception:
+            return
+
+        await container.remove_children()
+
+        commit_index = self._current_commit_index
+        if (
+            commit_index is None
+            or commit_index < 0
+            or commit_index >= len(self._entries)
+            or index is None
+            or index < 0
+            or index >= len(self._current_files)
+        ):
+            header.update("Select a file to preview its diff")
+            return
+
+        commit = self._entries[commit_index].commit
+        status, filepath, old_filepath = self._current_files[index]
+        short = commit[:8]
+        header.update(f"{filepath}  ({short})")
+
+        if status == "A":
+            before_text = ""
+            before_label = "/dev/null"
+        else:
+            source = old_filepath if old_filepath else filepath
+            before_raw = await asyncio.to_thread(
+                lambda: self._git_service.show_file(self._repo_root, f"{commit}~1", self._repo_root / source)
+            )
+            before_text = before_raw if before_raw is not None else ""
+            before_label = f"{short}~1:{source}"
+
+        if status == "D":
+            after_text = ""
+            after_label = "/dev/null"
+        else:
+            after_raw = await asyncio.to_thread(
+                lambda: self._git_service.show_file(self._repo_root, commit, self._repo_root / filepath)
+            )
+            after_text = after_raw if after_raw is not None else ""
+            after_label = f"{short}:{filepath}"
+
+        await container.mount(DiffView(before_label, before_text, after_label, after_text))
+
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        if event.list_view.id != "history-nav-list":
+            return
+        if self._mode == "files":
+            self._show_diff(event.list_view.index)
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.list_view.id != "history-nav-list":
+            return
+        event.stop()
+        if self._mode == "commits":
+            self._show_files_for_commit(event.list_view.index)
+            return
+        self._show_diff(event.list_view.index)
+
+    @on(Button.Pressed, "#history-nav-back")
+    def _on_back(self) -> None:
+        self._show_commits()
+        try:
+            self.query_one("#history-nav-list", ListView).focus()
+        except Exception:
+            pass
+
+    @on(_HistoryNavListView.BackRequested)
+    def _on_nav_back_requested(self, _event: _HistoryNavListView.BackRequested) -> None:
+        if self._mode != "files":
+            return
+        self._show_commits()
+        try:
+            self.query_one("#history-nav-list", ListView).focus()
+        except Exception:
+            pass
