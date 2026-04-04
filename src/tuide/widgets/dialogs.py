@@ -1473,14 +1473,14 @@ class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
                 node = node.parent
         except Exception:
             pass
-        for item in self.query("#push-nav-list > ListItem", ListItem):
+        for item in self.query("#push-nav-list > ListItem"):
             if item is target:
                 item.add_class("hovered")
             else:
                 item.remove_class("hovered")
 
     def on_leave(self) -> None:
-        for item in self.query("#push-nav-list > ListItem", ListItem):
+        for item in self.query("#push-nav-list > ListItem"):
             item.remove_class("hovered")
 
     @on(Button.Pressed, "#push-nav-back")
