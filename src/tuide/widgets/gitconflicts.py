@@ -2,75 +2,156 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.events import Key, Resize
 from textual.message import Message
+from textual.screen import ModalScreen
 from textual.widgets import Button, Label, OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 
 from tuide.models import GitConflictState
-from tuide.widgets.editor import _apply_language, build_editor_theme, detect_language
+from tuide.widgets.diffview import render_side_by_side_diff
 
 
-class ConflictCodeView(TextArea):
-    """Read-only code view used for full-file conflict comparison."""
+class ConflictCompareView(Vertical):
+    """Single-scroll, full-file conflict comparison view."""
 
-    class Scrolled(Message):
-        """The user scrolled this code view."""
+    DEFAULT_CSS = """
+    ConflictCompareView {
+        height: 1fr;
+        border-top: solid #21262d;
+    }
 
-        def __init__(self, view_id: str, scroll_x: float, scroll_y: float) -> None:
-            super().__init__()
-            self.view_id = view_id
-            self.scroll_x = scroll_x
-            self.scroll_y = scroll_y
+    #conflict-compare-header {
+        height: 1;
+    }
 
-    def __init__(self, *, view_id: str, text: str = "", classes: str | None = None) -> None:
-        super().__init__(
-            text=text,
-            language=None,
-            id=view_id,
-            read_only=True,
-            soft_wrap=False,
-            tab_behavior="indent",
-            classes=classes,
+    .conflict-compare-title {
+        width: 1fr;
+        padding: 0 1;
+        background: #161b22;
+        color: #8b949e;
+    }
+
+    #conflict-compare-scroll {
+        height: 1fr;
+        background: #0d1117;
+    }
+
+    #conflict-compare-content {
+        padding: 0 1 1 1;
+        background: #0d1117;
+    }
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._left_title = "Ours"
+        self._right_title = "Theirs"
+        self._left_text = ""
+        self._right_text = ""
+        self._focus_line = 1
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(id="conflict-compare-header"):
+            yield Label("Ours", id="conflict-left-title", classes="conflict-compare-title")
+            yield Label("Theirs", id="conflict-right-title", classes="conflict-compare-title")
+        with VerticalScroll(id="conflict-compare-scroll"):
+            yield Static("", id="conflict-compare-content")
+
+    def on_mount(self) -> None:
+        self.call_after_refresh(self._render)
+
+    def on_resize(self, event: Resize) -> None:
+        self.call_after_refresh(self._render)
+
+    def set_diff(
+        self,
+        *,
+        left_title: str,
+        left_text: str,
+        right_title: str,
+        right_text: str,
+        focus_line: int = 1,
+    ) -> None:
+        self._left_title = left_title
+        self._left_text = left_text
+        self._right_title = right_title
+        self._right_text = right_text
+        self._focus_line = focus_line
+        if self.is_mounted:
+            self._render()
+
+    def _render(self) -> None:
+        self.query_one("#conflict-left-title", Label).update(self._left_title)
+        self.query_one("#conflict-right-title", Label).update(self._right_title)
+        width = self.query_one("#conflict-compare-scroll", VerticalScroll).size.width
+        width = width or self.size.width or shutil.get_terminal_size().columns
+        body = render_side_by_side_diff(
+            self._left_title,
+            self._left_text,
+            self._right_title,
+            self._right_text,
+            max(80, width - 2),
+            full_context=True,
         )
-        self._suppress_scroll_events = False
-        try:
-            self.register_theme(build_editor_theme())
-            self.theme = "tuide_code"
-        except Exception:
-            pass
-        self.show_line_numbers = True
-        try:
-            self.cursor_blink = False
-        except Exception:
-            pass
+        self.query_one("#conflict-compare-content", Static).update(body)
+        self.query_one("#conflict-compare-scroll", VerticalScroll).scroll_to(
+            y=max(0, self._focus_line - 3),
+            animate=False,
+        )
 
-    def set_content(self, path: Path, text: str) -> None:
-        """Load content and apply syntax highlighting for the given file."""
-        self.load_text(text)
-        _apply_language(self, detect_language(path))
 
-    def sync_scroll(self, scroll_x: float, scroll_y: float) -> None:
-        """Apply a scroll position without echoing another scroll message."""
-        self._suppress_scroll_events = True
-        try:
-            self.scroll_x = scroll_x
-            self.scroll_y = scroll_y
-        finally:
-            self._suppress_scroll_events = False
+class _ConflictDismissMixin:
+    """Dismiss the full-screen resolver with Escape."""
 
-    def watch_scroll_y(self, old_value: float, new_value: float) -> None:
-        if self._suppress_scroll_events or not self.is_mounted:
-            return
-        self.post_message(self.Scrolled(self.id or "", self.scroll_x, new_value))
+    def on_key(self, event: Key) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+            event.stop()
 
-    def watch_scroll_x(self, old_value: float, new_value: float) -> None:
-        if self._suppress_scroll_events or not self.is_mounted:
-            return
-        self.post_message(self.Scrolled(self.id or "", new_value, self.scroll_y))
+
+class GitConflictResolverScreen(_ConflictDismissMixin, ModalScreen[None]):
+    """Full-screen overlay for conflict resolution."""
+
+    CSS = """
+    GitConflictResolverScreen {
+        align: center middle;
+        background: #0d1117 88%;
+    }
+
+    #conflict-screen-frame {
+        width: 98%;
+        height: 96%;
+        border: solid #30363d;
+        background: #0d1117;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss_screen", "Close", show=False),
+    ]
+
+    def __init__(self, state: GitConflictState, repo_root: Path) -> None:
+        super().__init__()
+        self._repo_root = repo_root
+        self._view = GitConflictResolverView(state, repo_root)
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="conflict-screen-frame"):
+            yield self._view
+
+    def action_dismiss_screen(self) -> None:
+        self.dismiss(None)
+
+    def set_state(self, state: GitConflictState, repo_root: Path) -> None:
+        self._repo_root = repo_root
+        self._view.set_state(state, repo_root)
 
 
 class GitConflictResolverView(Vertical):
@@ -101,7 +182,6 @@ class GitConflictResolverView(Vertical):
 
     #conflict-files-title,
     #conflict-blocks-title,
-    .conflict-diff-title,
     #conflict-resolution-title {
         height: 1;
         padding: 0 1;
@@ -150,16 +230,6 @@ class GitConflictResolverView(Vertical):
 
     #conflict-diff-row {
         height: 1fr;
-    }
-
-    .conflict-diff-pane {
-        width: 1fr;
-        border-top: solid #21262d;
-    }
-
-    .conflict-code-view {
-        height: 1fr;
-        background: #0d1117;
     }
 
     #conflict-resolution-title {
@@ -248,7 +318,19 @@ class GitConflictResolverView(Vertical):
         self._selected_file = 0 if state.files else -1
         self._selected_block = 0
         self._loaded_block_key: tuple[int, int] | None = None
-        self._syncing_scroll = False
+
+    def set_state(self, state: GitConflictState, repo_root: Path) -> None:
+        """Refresh the resolver with new conflict state."""
+        self._state = state
+        self._repo_root = repo_root
+        if self._selected_file >= len(state.files):
+            self._selected_file = 0 if state.files else -1
+            self._selected_block = 0
+        current_file = self._current_file()
+        if current_file is not None and self._selected_block >= len(current_file.blocks):
+            self._selected_block = 0
+        self._loaded_block_key = None
+        self._refresh_details()
 
     def compose(self) -> ComposeResult:
         count = len(self._state.files)
@@ -273,13 +355,8 @@ class GitConflictResolverView(Vertical):
                     "Top panes are read-only. Edit the final resolved text below, then apply it.",
                     id="conflict-hint",
                 )
-                with Horizontal(id="conflict-diff-row"):
-                    with Vertical(classes="conflict-diff-pane"):
-                        yield Label("Ours", id="conflict-left-title", classes="conflict-diff-title")
-                        yield ConflictCodeView(view_id="conflict-left-code", text="", classes="conflict-code-view")
-                    with Vertical(classes="conflict-diff-pane"):
-                        yield Label("Theirs", id="conflict-right-title", classes="conflict-diff-title")
-                        yield ConflictCodeView(view_id="conflict-right-code", text="", classes="conflict-code-view")
+                with Vertical(id="conflict-diff-row"):
+                    yield ConflictCompareView(id="conflict-compare")
                 yield Label("Resolved result", id="conflict-resolution-title")
                 yield TextArea("", id="conflict-resolution")
                 with Horizontal(id="conflict-action-row"):
@@ -346,10 +423,7 @@ class GitConflictResolverView(Vertical):
     def _refresh_details(self) -> None:
         file_label = self.query_one("#conflict-selected-file", Static)
         block_label = self.query_one("#conflict-selected-block", Static)
-        left_title = self.query_one("#conflict-left-title", Label)
-        right_title = self.query_one("#conflict-right-title", Label)
-        left_code = self.query_one("#conflict-left-code", ConflictCodeView)
-        right_code = self.query_one("#conflict-right-code", ConflictCodeView)
+        compare = self.query_one("#conflict-compare", ConflictCompareView)
         resolution = self.query_one("#conflict-resolution", TextArea)
         blocks = self.query_one("#conflict-blocks", OptionList)
 
@@ -357,10 +431,12 @@ class GitConflictResolverView(Vertical):
         if conflict_file is None:
             file_label.update("No conflicted files remain. Continue to finish the operation or abort it.")
             block_label.update("")
-            left_title.update("Ours")
-            right_title.update("Theirs")
-            left_code.set_content(self._repo_root / "resolved.txt", "All current conflict markers are resolved.")
-            right_code.set_content(self._repo_root / "resolved.txt", "")
+            compare.set_diff(
+                left_title="Ours",
+                left_text="All current conflict markers are resolved.",
+                right_title="Theirs",
+                right_text="",
+            )
             resolution.load_text("")
             self._set_block_buttons_enabled(False)
             blocks.clear_options()
@@ -377,15 +453,11 @@ class GitConflictResolverView(Vertical):
                 block = self._current_block()
             else:
                 block_label.update("No inline conflict markers detected. Use full-file editing, then Mark Resolved.")
-                left_title.update("Ours")
-                right_title.update("Theirs")
-                left_code.set_content(
-                    self._repo_root / conflict_file.filepath,
-                    "This file is still marked conflicted by Git, but tuide could not parse inline markers."
-                )
-                right_code.set_content(
-                    self._repo_root / conflict_file.filepath,
-                    "Open the full file, make the final contents you want, then choose Mark Resolved."
+                compare.set_diff(
+                    left_title="Ours",
+                    left_text="This file is still marked conflicted by Git, but tuide could not parse inline markers.",
+                    right_title="Theirs",
+                    right_text="Open the full file, make the final contents you want, then choose Mark Resolved.",
                 )
                 resolution.load_text("")
                 self._loaded_block_key = None
@@ -395,20 +467,13 @@ class GitConflictResolverView(Vertical):
         blocks.highlighted = self._selected_block
         ours_label = block.ours_label or "Current"
         theirs_label = block.theirs_label or "Incoming"
-        left_title.update(f"Ours  [{ours_label}]")
-        right_title.update(f"Theirs  [{theirs_label}]")
-        file_path = self._repo_root / conflict_file.filepath
-        left_code.set_content(file_path, conflict_file.ours_full_text)
-        right_code.set_content(file_path, conflict_file.theirs_full_text)
-        right_code.show_vertical_scrollbar = False
-        left_code.show_vertical_scrollbar = True
-        left_code.sync_scroll(left_code.scroll_x, max(0, block.ours_start_line - 3))
-        right_code.sync_scroll(right_code.scroll_x, max(0, block.theirs_start_line - 3))
-        try:
-            left_code.cursor_location = (max(0, block.ours_start_line - 1), 0)
-            right_code.cursor_location = (max(0, block.theirs_start_line - 1), 0)
-        except Exception:
-            pass
+        compare.set_diff(
+            left_title=f"Ours [{ours_label}]",
+            left_text=conflict_file.ours_full_text,
+            right_title=f"Theirs [{theirs_label}]",
+            right_text=conflict_file.theirs_full_text,
+            focus_line=min(block.ours_start_line, block.theirs_start_line),
+        )
         block_label.update(
             f"Block {block.index + 1} of {len(conflict_file.blocks)}"
             f"  lines {block.start_line}-{block.end_line}"
@@ -440,21 +505,6 @@ class GitConflictResolverView(Vertical):
         if option_id.startswith("block:"):
             self._selected_block = int(option_id.split(":", 1)[1])
             self._refresh_details()
-
-    def on_conflict_code_view_scrolled(self, event: ConflictCodeView.Scrolled) -> None:
-        """Keep both code panes aligned while the user scrolls either one."""
-        if self._syncing_scroll:
-            return
-        self._syncing_scroll = True
-        try:
-            left_code = self.query_one("#conflict-left-code", ConflictCodeView)
-            right_code = self.query_one("#conflict-right-code", ConflictCodeView)
-            if event.view_id == "conflict-left-code":
-                right_code.sync_scroll(event.scroll_x, event.scroll_y)
-            elif event.view_id == "conflict-right-code":
-                left_code.sync_scroll(event.scroll_x, event.scroll_y)
-        finally:
-            self._syncing_scroll = False
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         event.stop()

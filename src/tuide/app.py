@@ -34,7 +34,7 @@ from tuide.widgets.dialogs import (
     PromptDialog,
 )
 from tuide.widgets.editor import EditorPanel, WrappingTabBar
-from tuide.widgets.gitconflicts import GitConflictResolverView
+from tuide.widgets.gitconflicts import GitConflictResolverScreen, GitConflictResolverView
 from tuide.widgets.githistory import GitChangedFilesView, GitLogView
 from tuide.widgets.menubar import MenuBar
 from tuide.widgets.panels import WorkspacePanel
@@ -1499,6 +1499,9 @@ class TuideApp(App[None]):
 
     async def _close_git_update_tabs(self) -> None:
         """Close transient tabs created by the update/conflict workflow."""
+        screen = self._active_conflict_screen()
+        if screen is not None:
+            screen.dismiss(None)
         try:
             editor = self.query_one(EditorPanel)
         except Exception:
@@ -1513,16 +1516,38 @@ class TuideApp(App[None]):
         ):
             await editor.close_virtual_tab(title)
 
+    def _active_conflict_screen(self) -> GitConflictResolverScreen | None:
+        """Return the currently-open conflict screen when one is active."""
+        if len(self.screen_stack) <= 1:
+            return None
+        top = self.screen_stack[-1]
+        if isinstance(top, GitConflictResolverScreen):
+            return top
+        return None
+
     async def _show_conflict_resolver(self, repo_root: Path) -> bool:
         """Open or refresh the conflict resolver tab when a merge/rebase is active."""
         state = await asyncio.to_thread(self.git_service.conflict_state, repo_root)
-        editor = self.query_one(EditorPanel)
         if state is None:
-            await editor.close_virtual_tab("Git Conflicts")
+            screen = self._active_conflict_screen()
+            if screen is not None:
+                screen.dismiss(None)
+            try:
+                editor = self.query_one(EditorPanel)
+            except Exception:
+                editor = None
+            if editor is not None:
+                await editor.close_virtual_tab("Git Conflicts")
             self.refresh_status()
             return False
-        view = GitConflictResolverView(state, repo_root)
-        await editor.open_widget_tab("Git Conflicts", view, always_replace=True)
+        screen = self._active_conflict_screen()
+        if screen is not None:
+            screen.set_state(state, repo_root)
+        else:
+            self._push_modal_screen(
+                GitConflictResolverScreen(state, repo_root),
+                callback=lambda _result: self.run_worker(self._close_git_update_tabs(), exclusive=False),
+            )
         self.refresh_status()
         return True
 
