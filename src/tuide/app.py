@@ -1825,6 +1825,16 @@ class TuideApp(App[None]):
             )
             if not selected_branch:
                 return
+            confirmed = await self.wait_for_screen_result(
+                ConfirmDialog(
+                    f"Merge into {current_branch}",
+                    f"Merge branch '{selected_branch}' into '{current_branch}'?",
+                    confirm_label="Merge",
+                    confirm_variant="success",
+                )
+            )
+            if not confirmed:
+                return
             self.notify(f"Merging {selected_branch}…", severity="information")
             result = await asyncio.to_thread(
                 self.git_service.merge_branch,
