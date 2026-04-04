@@ -127,8 +127,8 @@ class ConfirmDialog(EscapeDismissMixin, ModalScreen[bool | None]):
                 )
 
     def on_mount(self) -> None:
-        """Focus the safest action first."""
-        self.query_one("#confirm-cancel", Button).focus()
+        """Keep the dialog neutral until the user hovers or tabs into a button."""
+        self.set_focus(None)
 
     def action_cancel(self) -> None:
         """Dismiss without confirming."""
@@ -209,8 +209,8 @@ class HelpDialog(EscapeDismissMixin, ModalScreen[None]):
             yield Button("Close", id="help-close", classes="dismiss-button")
 
     def on_mount(self) -> None:
-        """Focus the close button."""
-        self.query_one("#help-close", Button).focus()
+        """Keep the close button visually neutral until the user interacts."""
+        self.set_focus(None)
 
     def action_close_help(self) -> None:
         """Dismiss the help overlay."""
