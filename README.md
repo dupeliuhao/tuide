@@ -184,7 +184,7 @@ Once the app is open, try this:
 testing testing
 testing 2 testing 2
 
-test again
-test 4
-test 5
-test 6 hahahaha
+test again test 2
+test 4 test 2
+test 5 test 2
+test 6 test 2
