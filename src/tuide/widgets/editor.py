@@ -332,7 +332,7 @@ def build_editor_theme() -> TextAreaTheme:
         gutter_style=Style(color="#6e7681", bgcolor="#0d1117"),
         cursor_line_style=Style(bgcolor="#2d333b"),
         cursor_line_gutter_style=Style(color="#e6edf3", bgcolor="#2d333b"),
-        selection_style=Style(bgcolor="#1d3557"),
+        selection_style=Style(color="#0d1117", bgcolor="#f2cf86", bold=True),
         syntax_styles=syntax_styles,
     )
 
@@ -381,11 +381,14 @@ class FindBar(Horizontal):
     }
     FindBar Input {
         height: 3;
-        border: none;
+        border: solid #5a4016;
         background: #21262d;
         color: #e6edf3;
         width: 30;
         padding: 0 1;
+    }
+    FindBar Input:focus {
+        border: solid #8a5a16;
     }
     FindBar #find-count {
         width: auto;
@@ -406,7 +409,7 @@ class FindBar(Horizontal):
 
     def open(self) -> None:
         self.is_open = True
-        self.styles.height = 3
+        self.styles.height = 4
         self.query_one("#find-input", Input).focus()
 
     def close(self) -> None:
