@@ -470,11 +470,21 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
         Binding("escape", "cancel", "Cancel", show=False),
     ]
 
-    def __init__(self, title: str, options: list[ChoiceItem], placeholder: str = "Type to filter") -> None:
+    def __init__(
+        self,
+        title: str,
+        options: list[ChoiceItem],
+        placeholder: str = "Type to filter",
+        *,
+        confirm_label: str | None = None,
+    ) -> None:
         super().__init__()
         self._title = title
         self._options = options
         self._placeholder = placeholder
+        self._confirm_label = confirm_label
+        self._pending_selection: str | None = None
+        self._suspend_filtering = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="picker-dialog"):
@@ -484,11 +494,13 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
             yield PointerTrackingOptionList(*options, id="picker-options")
             with Horizontal(id="picker-actions"):
                 yield Button("Back", id="picker-cancel", classes="dismiss-button")
+                if self._confirm_label is not None:
+                    yield Button(self._confirm_label, id="picker-confirm", variant="success", disabled=True)
 
     def on_mount(self) -> None:
         self.query_one("#picker-input", Input).focus()
         option_list = self.query_one("#picker-options", PointerTrackingOptionList)
-        if option_list.option_count:
+        if option_list.option_count and self._confirm_label is None:
             option_list.highlighted = 0
 
     def action_cancel(self) -> None:
@@ -498,9 +510,15 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
         event.stop()
         if event.button.id == "picker-cancel":
             self.dismiss(None)
+            return
+        if event.button.id == "picker-confirm" and self._pending_selection is not None:
+            self.dismiss(self._pending_selection)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id != "picker-input":
+            return
+        if self._suspend_filtering:
+            self._suspend_filtering = False
             return
         query = event.value.strip().lower()
         option_list = self.query_one("#picker-options", PointerTrackingOptionList)
@@ -514,9 +532,24 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
         ]
         option_list.clear_options()
         option_list.add_options(options)
+        if self._confirm_label is None:
+            if option_list.option_count:
+                option_list.highlighted = 0
+        else:
+            self._pending_selection = None
+            try:
+                self.query_one("#picker-confirm", Button).disabled = True
+            except Exception:
+                pass
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        self.dismiss(event.option_id)
+        if self._confirm_label is None:
+            self.dismiss(event.option_id)
+            return
+        self._pending_selection = event.option_id
+        self._suspend_filtering = True
+        self.query_one("#picker-input", Input).value = event.option_id
+        self.query_one("#picker-confirm", Button).disabled = False
 
     @staticmethod
     def _format_option(item: ChoiceItem) -> str:
