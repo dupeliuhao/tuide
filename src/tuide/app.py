@@ -1025,7 +1025,7 @@ class TuideApp(App[None]):
             ]
 
         items += [
-            ChoiceItem("ctx.git_diff", "Git diff with branch"),
+            ChoiceItem("ctx.git_diff", "Compare With Branch"),
             ChoiceItem("ctx.git_history", "Git file history"),
             ChoiceItem("ctx.git_blame", "Git blame"),
             ChoiceItem("ctx.definition", "Go to definition"),
@@ -1202,7 +1202,7 @@ class TuideApp(App[None]):
             CommandItem("view.toggle_terminal", "Toggle terminal", "Show or hide the right panel"),
             CommandItem("git.branch_history", "Git branch history", "Browse commits on the current branch"),
             CommandItem("git.session", "Git session", "Open project-level Git actions"),
-            CommandItem("git.diff", "Git diff with branch", "Compare current file to another branch"),
+            CommandItem("git.diff", "Compare With Branch", "Compare current file to another branch"),
             CommandItem("git.changed_files", "Git changed files", "Show side-by-side diff for any file changed vs HEAD"),
             CommandItem("git.history", "Git file history", "Show history for the active file"),
             CommandItem("git.blame", "Git blame", "Show blame for the active file"),
@@ -1254,7 +1254,7 @@ class TuideApp(App[None]):
             items = [
                 ChoiceItem("file.close", "Close active tab"),
                 ChoiceItem("search.find_file", "Find in file"),
-                ChoiceItem("git.diff", "Git diff with branch"),
+                ChoiceItem("git.diff", "Compare With Branch"),
                 ChoiceItem("git.history", "Git file history"),
                 ChoiceItem("git.blame", "Git blame"),
                 ChoiceItem("git.line_history", "Git line history"),
@@ -2047,7 +2047,7 @@ class TuideApp(App[None]):
             return
         branch = await self.wait_for_screen_result(
             OptionPickerDialog(
-                "Diff with branch",
+                "Compare With Branch",
                 [ChoiceItem(id=name, label=name) for name in branches],
                 placeholder="Filter branches",
             )
