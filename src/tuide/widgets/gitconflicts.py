@@ -53,6 +53,8 @@ class ConflictCompareView(Vertical):
         super().__init__(*children, **kwargs)
         self._left_title = "Ours"
         self._right_title = "Theirs"
+        self._left_source_name = "ours.txt"
+        self._right_source_name = "theirs.txt"
         self._left_text = ""
         self._right_text = ""
         self._focus_line = 1
@@ -77,12 +79,16 @@ class ConflictCompareView(Vertical):
         left_text: str,
         right_title: str,
         right_text: str,
+        left_source_name: str | None = None,
+        right_source_name: str | None = None,
         focus_line: int = 1,
     ) -> None:
         self._left_title = left_title
         self._left_text = left_text
         self._right_title = right_title
         self._right_text = right_text
+        self._left_source_name = left_source_name or left_title
+        self._right_source_name = right_source_name or right_title
         self._focus_line = focus_line
         if self.is_mounted:
             self._render()
@@ -93,9 +99,9 @@ class ConflictCompareView(Vertical):
         width = self.query_one("#conflict-compare-scroll", VerticalScroll).size.width
         width = width or self.size.width or shutil.get_terminal_size().columns
         body = render_side_by_side_diff(
-            self._left_title,
+            self._left_source_name,
             self._left_text,
-            self._right_title,
+            self._right_source_name,
             self._right_text,
             max(80, width - 2),
             full_context=True,
@@ -126,8 +132,8 @@ class GitConflictResolverScreen(_ConflictDismissMixin, ModalScreen[None]):
     }
 
     #conflict-screen-frame {
-        width: 98%;
-        height: 96%;
+        width: 100%;
+        height: 100%;
         border: solid #30363d;
         background: #0d1117;
     }
@@ -176,7 +182,7 @@ class GitConflictResolverView(Vertical):
     }
 
     #conflict-files-panel {
-        width: 24;
+        width: 18;
         border-right: solid #21262d;
     }
 
@@ -200,31 +206,18 @@ class GitConflictResolverView(Vertical):
         width: 1fr;
     }
 
-    #conflict-selected-file,
-    #conflict-selected-block {
+    #conflict-status {
         height: auto;
         padding: 0 1;
     }
 
-    #conflict-selected-file {
-        color: #79c0ff;
-        background: #0d1117;
-    }
-
-    #conflict-selected-block {
+    #conflict-status {
         color: #8b949e;
         background: #0d1117;
     }
 
-    #conflict-hint {
-        height: auto;
-        padding: 0 1;
-        color: #6e7681;
-        background: #0d1117;
-    }
-
     #conflict-blocks-panel {
-        height: 9;
+        height: 7;
         border-bottom: solid #21262d;
     }
 
@@ -346,15 +339,10 @@ class GitConflictResolverView(Vertical):
                 yield Label("Files", id="conflict-files-title")
                 yield OptionList(*self._file_options(), id="conflict-files")
             with Vertical(id="conflict-detail-panel"):
-                yield Static("", id="conflict-selected-file")
                 with Vertical(id="conflict-blocks-panel"):
                     yield Label("Conflict blocks", id="conflict-blocks-title")
                     yield OptionList(*self._block_options(), id="conflict-blocks")
-                yield Static("", id="conflict-selected-block")
-                yield Static(
-                    "Top panes are read-only. Edit the final resolved text below, then apply it.",
-                    id="conflict-hint",
-                )
+                yield Static("", id="conflict-status")
                 with Vertical(id="conflict-diff-row"):
                     yield ConflictCompareView(id="conflict-compare")
                 yield Label("Resolved result", id="conflict-resolution-title")
@@ -421,16 +409,14 @@ class GitConflictResolverView(Vertical):
         return conflict_file.blocks[self._selected_block]
 
     def _refresh_details(self) -> None:
-        file_label = self.query_one("#conflict-selected-file", Static)
-        block_label = self.query_one("#conflict-selected-block", Static)
+        status = self.query_one("#conflict-status", Static)
         compare = self.query_one("#conflict-compare", ConflictCompareView)
         resolution = self.query_one("#conflict-resolution", TextArea)
         blocks = self.query_one("#conflict-blocks", OptionList)
 
         conflict_file = self._current_file()
         if conflict_file is None:
-            file_label.update("No conflicted files remain. Continue to finish the operation or abort it.")
-            block_label.update("")
+            status.update("No conflicted files remain. Continue to finish the operation or abort it.")
             compare.set_diff(
                 left_title="Ours",
                 left_text="All current conflict markers are resolved.",
@@ -442,7 +428,6 @@ class GitConflictResolverView(Vertical):
             blocks.clear_options()
             return
 
-        file_label.update(conflict_file.filepath)
         blocks.clear_options()
         blocks.add_options(self._block_options())
 
@@ -452,12 +437,17 @@ class GitConflictResolverView(Vertical):
                 self._selected_block = 0
                 block = self._current_block()
             else:
-                block_label.update("No inline conflict markers detected. Use full-file editing, then Mark Resolved.")
+                status.update(
+                    f"{conflict_file.filepath}  No inline conflict markers detected. "
+                    "Use full-file editing, then Mark Resolved."
+                )
                 compare.set_diff(
                     left_title="Ours",
                     left_text="This file is still marked conflicted by Git, but tuide could not parse inline markers.",
                     right_title="Theirs",
                     right_text="Open the full file, make the final contents you want, then choose Mark Resolved.",
+                    left_source_name=conflict_file.filepath,
+                    right_source_name=conflict_file.filepath,
                 )
                 resolution.load_text("")
                 self._loaded_block_key = None
@@ -467,16 +457,20 @@ class GitConflictResolverView(Vertical):
         blocks.highlighted = self._selected_block
         ours_label = block.ours_label or "Current"
         theirs_label = block.theirs_label or "Incoming"
+        source_name = conflict_file.filepath
         compare.set_diff(
             left_title=f"Ours [{ours_label}]",
             left_text=conflict_file.ours_full_text,
             right_title=f"Theirs [{theirs_label}]",
             right_text=conflict_file.theirs_full_text,
+            left_source_name=f"a/{source_name}",
+            right_source_name=f"b/{source_name}",
             focus_line=min(block.ours_start_line, block.theirs_start_line),
         )
-        block_label.update(
-            f"Block {block.index + 1} of {len(conflict_file.blocks)}"
+        status.update(
+            f"{conflict_file.filepath}  Block {block.index + 1} of {len(conflict_file.blocks)}"
             f"  lines {block.start_line}-{block.end_line}"
+            "  Top view is read-only; edit the final resolved text below, then apply it."
         )
 
         current_key = (self._selected_file, self._selected_block)

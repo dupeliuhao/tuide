@@ -53,6 +53,7 @@ def _run_delta(
                 f"--width={width}",
                 "--side-by-side",
                 "--line-numbers",
+                "--syntax-theme=GitHub",
                 "--hunk-header-style=file line-number syntax",
                 "--hunk-header-decoration-style=box",
             ],
