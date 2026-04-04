@@ -598,7 +598,7 @@ class BranchPickerScreen(EscapeDismissMixin, ModalScreen[str | None]):
     }
 
     #branch-filter {
-        height: 3;
+        height: 1;
         margin: 0;
     }
 
