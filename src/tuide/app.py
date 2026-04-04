@@ -1641,11 +1641,6 @@ class TuideApp(App[None]):
                 f"Git - {repo_root.name} ({branch})",
                 [
                     ChoiceItem(
-                        id="git.session.update",
-                        label="Update",
-                        description="Fast-forward the current branch from upstream",
-                    ),
-                    ChoiceItem(
                         id="git.session.commit",
                         label="Commit",
                         description="Stage all changes and create a commit",
@@ -1656,14 +1651,19 @@ class TuideApp(App[None]):
                         description="Push current branch to upstream",
                     ),
                     ChoiceItem(
-                        id="git.session.branch",
-                        label="Select Branch",
-                        description="Browse local and remote branches",
-                    ),
-                    ChoiceItem(
                         id="git.session.fetch",
                         label="Fetch",
                         description="Refresh remote refs and branch info without changing files",
+                    ),
+                    ChoiceItem(
+                        id="git.session.update",
+                        label="Update",
+                        description="Fast-forward the current branch from upstream",
+                    ),
+                    ChoiceItem(
+                        id="git.session.branch",
+                        label="Select Branch",
+                        description="Browse local and remote branches",
                     ),
                     ChoiceItem(
                         id="git.session.branch_history",
