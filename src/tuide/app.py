@@ -561,6 +561,24 @@ class TuideApp(App[None]):
         background: #21262d;
         color: #ffffff;
     }
+
+    .dismiss-button.-active {
+        background: #21262d;
+        color: #ffffff;
+    }
+
+    .danger-button {
+        background: #7a1f1f;
+        color: #fff7f7;
+        border: none;
+    }
+
+    .danger-button:hover,
+    .danger-button:focus,
+    .danger-button.-active {
+        background: #b42323;
+        color: #ffffff;
+    }
     """
 
     BINDINGS = [
@@ -787,6 +805,8 @@ class TuideApp(App[None]):
         message: str,
         *,
         confirm_label: str,
+        confirm_variant: str = "warning",
+        confirm_classes: str = "",
         on_confirm,
     ) -> None:
         """Show a confirm dialog and run a callback only when confirmed."""
@@ -796,7 +816,13 @@ class TuideApp(App[None]):
                 on_confirm()
 
         self._push_modal_screen(
-            ConfirmDialog(title, message, confirm_label=confirm_label),
+            ConfirmDialog(
+                title,
+                message,
+                confirm_label=confirm_label,
+                confirm_variant=confirm_variant,
+                confirm_classes=confirm_classes,
+            ),
             callback=_resolve,
         )
 
@@ -1189,6 +1215,8 @@ class TuideApp(App[None]):
             title,
             message,
             confirm_label="Quit",
+            confirm_variant="error",
+            confirm_classes="danger-button",
             on_confirm=lambda: self.call_after_refresh(self.exit),
         )
 

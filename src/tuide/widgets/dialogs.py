@@ -101,12 +101,16 @@ class ConfirmDialog(EscapeDismissMixin, ModalScreen[bool | None]):
         *,
         confirm_label: str = "Confirm",
         cancel_label: str = "Cancel",
+        confirm_variant: str = "warning",
+        confirm_classes: str = "",
     ) -> None:
         super().__init__()
         self._title = title
         self._message = message
         self._confirm_label = confirm_label
         self._cancel_label = cancel_label
+        self._confirm_variant = confirm_variant
+        self._confirm_classes = confirm_classes
 
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-dialog"):
@@ -115,7 +119,12 @@ class ConfirmDialog(EscapeDismissMixin, ModalScreen[bool | None]):
             yield Label("Esc or Back to return", id="confirm-hint")
             with Horizontal(id="confirm-actions"):
                 yield Button("Back", id="confirm-cancel", classes="dismiss-button")
-                yield Button(self._confirm_label, variant="warning", id="confirm-ok")
+                yield Button(
+                    self._confirm_label,
+                    variant=self._confirm_variant,
+                    id="confirm-ok",
+                    classes=self._confirm_classes,
+                )
 
     def on_mount(self) -> None:
         """Focus the safest action first."""
