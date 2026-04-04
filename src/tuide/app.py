@@ -694,6 +694,7 @@ class TuideApp(App[None]):
         self.title = "tuide"
         self.sub_title = "Terminal IDE shell"
         self.apply_panel_widths()
+        self.query_one("#terminal-panel").display = False
         self.query_one(EditorPanel).focus()
         self.refresh_status()
         self.sync_splitter_visibility()
