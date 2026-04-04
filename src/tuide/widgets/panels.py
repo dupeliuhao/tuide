@@ -53,10 +53,18 @@ class _NarrowDirectoryTree(DirectoryTree):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._dirty_paths: set[str] = set()
+        self._dirty_dirs: set[str] = set()
 
     def set_dirty_paths(self, paths: set[str]) -> None:
         """Update the set of repo-relative dirty file paths and refresh."""
         self._dirty_paths = paths
+        dirty_dirs: set[str] = set()
+        for raw_path in paths:
+            current = Path(raw_path).parent
+            while current != current.parent:
+                dirty_dirs.add(str(current))
+                current = current.parent
+        self._dirty_dirs = dirty_dirs
         self.refresh()
 
     def render_label(self, node: TreeNode[DirEntry], base_style: Style, style: Style) -> Text:
@@ -86,9 +94,12 @@ class _NarrowDirectoryTree(DirectoryTree):
             )
 
         dirty_marker = Text("")
-        if not node._allow_expand and node.data is not None:
+        if node.data is not None:
             node_str = str(node.data.path)
-            if node_str in self._dirty_paths:
+            if node._allow_expand:
+                if node_str in self._dirty_dirs:
+                    dirty_marker = Text(" *", style=_DIRTY_STYLE)
+            elif node_str in self._dirty_paths:
                 dirty_marker = Text(" *", style=_DIRTY_STYLE)
 
         return Text.assemble(prefix, node_label, dirty_marker)

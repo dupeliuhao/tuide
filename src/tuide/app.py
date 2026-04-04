@@ -1157,18 +1157,24 @@ class TuideApp(App[None]):
         self.refresh_status()
 
     async def action_request_quit(self) -> None:
-        """Quit the app, prompting if there are unsaved changes."""
+        """Quit the app only after an explicit confirmation."""
         editor = self.query_one(EditorPanel)
         dirty_count = editor.dirty_count
         if dirty_count:
-            self.show_confirm_dialog(
-                "Unsaved changes",
-                f"You have {dirty_count} unsaved file{'s' if dirty_count != 1 else ''}. Quit anyway?",
-                confirm_label="Quit",
-                on_confirm=lambda: self.call_after_refresh(self.exit),
+            title = "Quit tuide?"
+            message = (
+                f"You have {dirty_count} local file change{'s' if dirty_count != 1 else ''} "
+                "that are not committed. Quit anyway?"
             )
-            return
-        self.call_after_refresh(self.exit)
+        else:
+            title = "Quit tuide?"
+            message = "Exit tuide and return to the terminal?"
+        self.show_confirm_dialog(
+            title,
+            message,
+            confirm_label="Quit",
+            on_confirm=lambda: self.call_after_refresh(self.exit),
+        )
 
     def action_restart_terminal(self) -> None:
         """Restart the active terminal tab when available."""

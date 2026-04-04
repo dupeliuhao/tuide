@@ -192,7 +192,7 @@ class HelpDialog(EscapeDismissMixin, ModalScreen[None]):
             yield Label("Ctrl+Z           undo last edit", classes="help-line")
             yield Label("Ctrl+Shift+Z     redo last undone edit", classes="help-line")
             yield Label("Ctrl+W           close active tab", classes="help-line")
-            yield Label("Ctrl+Q           quit with unsaved-changes prompt", classes="help-line")
+            yield Label("Ctrl+Q           confirm before quitting tuide", classes="help-line")
             yield Label("Ctrl+B           toggle workspace panel", classes="help-line")
             yield Label("Ctrl+J           toggle terminal panel", classes="help-line")
             yield Label("Ctrl+R           restart terminal", classes="help-line")
