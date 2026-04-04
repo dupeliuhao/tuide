@@ -298,6 +298,8 @@ class GitService:
 
     def commit_all(self, repo_root: Path, message: str) -> tuple[bool, str]:
         """Stage all changes and create a commit."""
+        if self.conflict_state(repo_root) is not None:
+            return False, "Resolve or abort the current merge/rebase conflict before committing."
         staged_ok, staged_output = self._run_with_error(repo_root, ["add", "-A"])
         if not staged_ok:
             return False, staged_output

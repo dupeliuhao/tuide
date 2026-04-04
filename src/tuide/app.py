@@ -1753,6 +1753,13 @@ class TuideApp(App[None]):
             return
 
         if action_id == "git.session.commit":
+            if self.git_service.conflict_state(repo_root) is not None:
+                await self._show_conflict_resolver(repo_root)
+                self.notify(
+                    "A merge or rebase conflict is still in progress. Resolve or abort it before using Commit.",
+                    severity="warning",
+                )
+                return
             result = await self.wait_for_screen_result(
                 GitCommitScreen(repo_root, self.git_service)
             )
