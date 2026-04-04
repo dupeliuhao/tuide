@@ -552,10 +552,14 @@ class TuideApp(App[None]):
         border: none;
     }
 
-    .dismiss-button:hover,
-    .dismiss-button:focus {
+    .dismiss-button:hover {
         background: #8a5a16;
         color: #fff7e6;
+    }
+
+    .dismiss-button:focus {
+        background: #21262d;
+        color: #ffffff;
     }
     """
 
