@@ -11,6 +11,32 @@ from textual.message import Message
 from textual.widgets import Label, ListItem, ListView, Static
 
 
+class _HoverListView(ListView):
+    """ListView that keeps the full hovered row highlighted."""
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        target: ListItem | None = None
+        try:
+            widget, _ = self.screen.get_widget_at(event.screen_x, event.screen_y)
+            node = widget
+            while node is not None:
+                if isinstance(node, ListItem):
+                    target = node
+                    break
+                node = node.parent
+        except Exception:
+            pass
+        for item in self.query("ListItem"):
+            if item is target:
+                item.add_class("hovered")
+            else:
+                item.remove_class("hovered")
+
+    def on_leave(self) -> None:
+        for item in self.query("ListItem"):
+            item.remove_class("hovered")
+
+
 class _CommitItem(ListItem):
     """A selectable two-line commit row."""
 
@@ -102,7 +128,7 @@ class GitLogView(Vertical):
             _CommitItem(e.commit, e.date, e.author, e.subject, e.unpushed)
             for e in self._entries
         ]
-        yield ListView(*items, id="git-log-list")
+        yield _HoverListView(*items, id="git-log-list")
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         event.stop()
@@ -114,28 +140,6 @@ class GitLogView(Vertical):
                     repo_root=self._repo_root,
                 )
             )
-
-    def on_mouse_move(self, event: events.MouseMove) -> None:
-        target: ListItem | None = None
-        try:
-            widget, _ = self.screen.get_widget_at(event.screen_x, event.screen_y)
-            node = widget
-            while node is not None:
-                if isinstance(node, ListItem):
-                    target = node
-                    break
-                node = node.parent
-        except Exception:
-            pass
-        for item in self.query(ListItem):
-            if item is target:
-                item.add_class("hovered")
-            else:
-                item.remove_class("hovered")
-
-    def on_leave(self) -> None:
-        for item in self.query(ListItem):
-            item.remove_class("hovered")
 
 
 class GitChangedFilesView(Vertical):
@@ -189,7 +193,7 @@ class GitChangedFilesView(Vertical):
             _ChangedFileItem(status, filepath, old_filepath)
             for status, filepath, old_filepath in self._file_entries
         ]
-        yield ListView(*items, id="git-files-list")
+        yield _HoverListView(*items, id="git-files-list")
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         event.stop()
@@ -203,25 +207,3 @@ class GitChangedFilesView(Vertical):
                     repo_root=self._repo_root,
                 )
             )
-
-    def on_mouse_move(self, event: events.MouseMove) -> None:
-        target: ListItem | None = None
-        try:
-            widget, _ = self.screen.get_widget_at(event.screen_x, event.screen_y)
-            node = widget
-            while node is not None:
-                if isinstance(node, ListItem):
-                    target = node
-                    break
-                node = node.parent
-        except Exception:
-            pass
-        for item in self.query(ListItem):
-            if item is target:
-                item.add_class("hovered")
-            else:
-                item.remove_class("hovered")
-
-    def on_leave(self) -> None:
-        for item in self.query(ListItem):
-            item.remove_class("hovered")
