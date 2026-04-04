@@ -1544,6 +1544,8 @@ class TuideApp(App[None]):
             "git:update:merge",
             "git:update:continue",
             "git:update:abort",
+            "git:operation:continue",
+            "git:operation:abort",
         ):
             await editor.close_virtual_tab(title)
 
@@ -1661,6 +1663,11 @@ class TuideApp(App[None]):
                         description="Fast-forward the current branch from upstream",
                     ),
                     ChoiceItem(
+                        id="git.session.merge",
+                        label="Merge Branch",
+                        description="Merge a local or remote branch into the current branch",
+                    ),
+                    ChoiceItem(
                         id="git.session.branch",
                         label="Select Branch",
                         description="Browse local and remote branches",
@@ -1728,6 +1735,67 @@ class TuideApp(App[None]):
                 return
             self.notify(
                 self._git_error_summary("Update", result.output),
+                severity="error",
+            )
+            return
+
+        if action_id == "git.session.merge":
+            if await self._show_conflict_resolver(repo_root):
+                self.notify(
+                    "Finish or abort the current merge/rebase before starting another merge.",
+                    severity="warning",
+                )
+                return
+            current_branch = self.git_service.current_branch(repo_root) or "detached"
+            local_branches = set(self.git_service.list_branches(repo_root))
+            branches = [
+                name for name in self.git_service.list_all_branches(repo_root)
+                if name != current_branch
+            ]
+            if not branches:
+                self.notify("No mergeable branches available", severity="warning")
+                return
+            selected_branch = await self.wait_for_screen_result(
+                OptionPickerDialog(
+                    f"Merge into {current_branch}",
+                    [
+                        ChoiceItem(
+                            id=name,
+                            label=name,
+                            description=(
+                                "local branch"
+                                if name in local_branches
+                                else "remote branch"
+                            ),
+                        )
+                        for name in branches
+                    ],
+                    placeholder="Filter branches to merge",
+                )
+            )
+            if not selected_branch:
+                return
+            self.notify(f"Merging {selected_branch}…", severity="information")
+            result = await asyncio.to_thread(
+                self.git_service.merge_branch,
+                repo_root,
+                selected_branch,
+            )
+            await self.open_git_output_tab("git:merge", repo_root, result.output)
+            if result.status == "success":
+                await self._refresh_repo_after_git_change(repo_root, reload_documents=True)
+                self.notify(f"Merged {selected_branch} into {current_branch}")
+                return
+            if result.status == "conflict":
+                await self._refresh_repo_after_git_change(repo_root, reload_documents=True)
+                await self._show_conflict_resolver(repo_root)
+                self.notify(
+                    f"Merge hit conflicts. Resolve them in Git Conflicts, then continue.",
+                    severity="warning",
+                )
+                return
+            self.notify(
+                self._git_error_summary("Merge", result.output),
                 severity="error",
             )
             return
@@ -1943,21 +2011,21 @@ class TuideApp(App[None]):
         event: GitConflictResolverView.ContinueRequested,
     ) -> None:
         """Continue the active merge or rebase after resolution."""
-        self.notify("Continuing update…", severity="information")
+        self.notify("Continuing git operation…", severity="information")
         result = await asyncio.to_thread(
             self.git_service.continue_conflict_operation,
             event.repo_root,
         )
-        await self.open_git_output_tab("git:update:continue", event.repo_root, result.output)
+        await self.open_git_output_tab("git:operation:continue", event.repo_root, result.output)
         if result.status == "success":
             await self._refresh_repo_after_git_change(event.repo_root, reload_documents=True)
             await self._close_git_update_tabs()
-            self.notify("Update completed")
+            self.notify("Git operation completed")
             return
         if result.status == "conflict":
             await self._refresh_repo_after_git_change(event.repo_root, reload_documents=True)
             await self._show_conflict_resolver(event.repo_root)
-            self.notify("More conflicts need resolution before the update can finish.", severity="warning")
+            self.notify("More conflicts need resolution before this git operation can finish.", severity="warning")
             return
         self.notify(self._git_error_summary("Continue", result.output), severity="error")
 
@@ -1966,16 +2034,16 @@ class TuideApp(App[None]):
         event: GitConflictResolverView.AbortRequested,
     ) -> None:
         """Abort the active merge or rebase and restore the repo to a clean branch state."""
-        self.notify("Aborting update…", severity="information")
+        self.notify("Aborting git operation…", severity="information")
         result = await asyncio.to_thread(
             self.git_service.abort_conflict_operation,
             event.repo_root,
         )
-        await self.open_git_output_tab("git:update:abort", event.repo_root, result.output)
+        await self.open_git_output_tab("git:operation:abort", event.repo_root, result.output)
         if result.status == "success":
             await self._refresh_repo_after_git_change(event.repo_root, reload_documents=True)
             await self._close_git_update_tabs()
-            self.notify("Update aborted")
+            self.notify("Git operation aborted")
             return
         self.notify(self._git_error_summary("Abort", result.output), severity="error")
 

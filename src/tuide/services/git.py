@@ -262,6 +262,14 @@ class GitService:
             conflict_ok=True,
         )
 
+    def merge_branch(self, repo_root: Path, branch: str) -> GitCommandResult:
+        """Merge a selected local or remote branch into the current branch."""
+        return self._run_git_operation(
+            repo_root,
+            ["-c", "core.editor=true", "merge", "--no-edit", branch],
+            conflict_ok=True,
+        )
+
     def _list_remotes(self, repo_root: Path) -> list[str]:
         """Return configured remote names."""
         result = self._run(repo_root, ["remote"])
