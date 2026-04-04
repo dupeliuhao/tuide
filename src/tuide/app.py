@@ -316,15 +316,8 @@ class TuideApp(App[None]):
         padding: 0 1;
     }
 
-    GitLogView ListItem.hovered,
-    GitChangedFilesView ListItem.hovered {
-        background: #2a2114;
-    }
-
-    GitLogView ListItem:hover,
-    GitChangedFilesView ListItem:hover,
-    GitLogView ListItem:hover.--highlight,
-    GitChangedFilesView ListItem:hover.--highlight {
+    GitLogView ListView.pointer-hover > ListItem.--highlight,
+    GitChangedFilesView ListView.pointer-hover > ListItem.--highlight {
         background: #8a5a16;
     }
 

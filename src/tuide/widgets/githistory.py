@@ -26,15 +26,20 @@ class _HoverListView(ListView):
                 node = node.parent
         except Exception:
             pass
-        for item in self.query("ListItem"):
-            if item is target:
-                item.add_class("hovered")
-            else:
-                item.remove_class("hovered")
+        if target is None:
+            self.remove_class("pointer-hover")
+            return
+        try:
+            target_index = self._nodes.index(target)
+        except ValueError:
+            self.remove_class("pointer-hover")
+            return
+        self.add_class("pointer-hover")
+        if self.index != target_index:
+            self.index = target_index
 
     def on_leave(self) -> None:
-        for item in self.query("ListItem"):
-            item.remove_class("hovered")
+        self.remove_class("pointer-hover")
 
 
 class _CommitItem(ListItem):
