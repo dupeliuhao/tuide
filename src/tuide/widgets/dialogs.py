@@ -39,6 +39,12 @@ class PointerTrackingOptionList(OptionList):
             self.highlighted = option_index
 
 
+class NeutralFocusDialog(Vertical):
+    """Focusable dialog container that keeps button styles neutral by default."""
+
+    can_focus = True
+
+
 class ConfirmDialog(EscapeDismissMixin, ModalScreen[bool | None]):
     """A simple confirm / cancel dialog."""
 
@@ -113,7 +119,7 @@ class ConfirmDialog(EscapeDismissMixin, ModalScreen[bool | None]):
         self._confirm_classes = confirm_classes
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="confirm-dialog"):
+        with NeutralFocusDialog(id="confirm-dialog"):
             yield Label(self._title, id="confirm-title")
             yield Label(self._message, id="confirm-message")
             yield Label("Esc or Back to return", id="confirm-hint")
@@ -128,7 +134,7 @@ class ConfirmDialog(EscapeDismissMixin, ModalScreen[bool | None]):
 
     def on_mount(self) -> None:
         """Keep the dialog neutral until the user hovers or tabs into a button."""
-        self.set_focus(None)
+        self.query_one("#confirm-dialog", NeutralFocusDialog).focus()
 
     def action_cancel(self) -> None:
         """Dismiss without confirming."""
@@ -194,7 +200,7 @@ class HelpDialog(EscapeDismissMixin, ModalScreen[None]):
     ]
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="help-dialog"):
+        with NeutralFocusDialog(id="help-dialog"):
             yield Label("tuide keybindings", id="help-title")
             yield Label("Tab / Shift+Tab  cycle focus between panels", classes="help-line")
             yield Label("Esc              return focus to the editor", classes="help-line")
@@ -210,7 +216,7 @@ class HelpDialog(EscapeDismissMixin, ModalScreen[None]):
 
     def on_mount(self) -> None:
         """Keep the close button visually neutral until the user interacts."""
-        self.set_focus(None)
+        self.query_one("#help-dialog", NeutralFocusDialog).focus()
 
     def action_close_help(self) -> None:
         """Dismiss the help overlay."""
