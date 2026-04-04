@@ -33,7 +33,13 @@ class EscapeDismissMixin:
 class PointerTrackingOptionList(OptionList):
     """OptionList that moves the highlighted row with pointer hover."""
 
+    def __init__(self, *content, track_pointer: bool = True, **kwargs) -> None:
+        super().__init__(*content, **kwargs)
+        self.track_pointer = track_pointer
+
     def on_mouse_move(self, event: events.MouseMove) -> None:
+        if not self.track_pointer:
+            return
         option_index = event.style.meta.get("option")
         if option_index is not None and option_index != self.highlighted:
             self.highlighted = option_index
@@ -491,7 +497,11 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
             yield Label(self._title, id="picker-title")
             yield Input(placeholder=self._placeholder, id="picker-input")
             options = [Option(self._format_option(item), id=item.id) for item in self._options]
-            yield PointerTrackingOptionList(*options, id="picker-options")
+            yield PointerTrackingOptionList(
+                *options,
+                id="picker-options",
+                track_pointer=self._confirm_label is None,
+            )
             with Horizontal(id="picker-actions"):
                 yield Button("Back", id="picker-cancel", classes="dismiss-button")
                 if self._confirm_label is not None:
@@ -536,6 +546,7 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
             if option_list.option_count:
                 option_list.highlighted = 0
         else:
+            option_list.track_pointer = True
             self._pending_selection = None
             try:
                 self.query_one("#picker-confirm", Button).disabled = True
@@ -547,6 +558,8 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
             self.dismiss(event.option_id)
             return
         self._pending_selection = event.option_id
+        option_list = self.query_one("#picker-options", PointerTrackingOptionList)
+        option_list.track_pointer = False
         self._suspend_filtering = True
         self.query_one("#picker-input", Input).value = event.option_id
         self.query_one("#picker-confirm", Button).disabled = False
