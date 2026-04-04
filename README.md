@@ -10,10 +10,9 @@ The current build is a Linux-first shell with these working or first-pass featur
 - multi-root workspace state with root add/remove prompts and active-root switching
 - center tabbed editor that opens files from the tree
 - editable `TextArea` buffers
-- dirty-state tracking
-- save with `Ctrl+S`
+- immediate write-through editing with local-change tracking
 - close active tab with `Ctrl+W`
-- unsaved-change confirmation on tab close and app quit
+- local-change confirmation on tab close and app quit
 - top command/menu bar with clickable actions
 - searchable command palette with `Ctrl+Shift+P`
 - focus-aware context actions with `Ctrl+.`
@@ -138,8 +137,8 @@ Once the app is open, try this:
 1. Confirm the left panel shows the repo files.
 2. Select a file in the tree and confirm it opens in the center tab area.
 3. Edit the file and confirm the tab title gains a `*`.
-4. Press `Ctrl+S` and confirm the dirty marker clears.
-5. Edit again, then press `Ctrl+W` and confirm the unsaved-change dialog appears.
+4. Edit a file and confirm the dirty marker stays visible after the text is written locally.
+5. Press `Ctrl+W` and confirm the local-change dialog appears.
 6. Press `?` and confirm the help overlay appears.
 7. Press `Esc` and confirm focus returns toward the editor.
 8. Press `Ctrl+Shift+P` and confirm the command palette opens and filters commands.
@@ -154,12 +153,11 @@ Once the app is open, try this:
 17. Run a simple command such as `ls`.
 18. Try launching an external CLI such as `kiro-cli` if it is installed.
 19. Press `Ctrl+R` and confirm the terminal restarts.
-20. Press `Ctrl+Q` with a dirty file and confirm the quit warning appears.
+20. Press `Ctrl+Q` with local changes and confirm the quit warning appears.
 
 ## Keybindings right now
 
 - `Tab` / `Shift+Tab`: cycle focus
-- `Ctrl+S`: save active file
 - `Ctrl+W`: close active tab
 - `Ctrl+Q`: quit with unsaved-change protection
 - `Ctrl+P`: quick open

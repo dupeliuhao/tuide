@@ -34,6 +34,7 @@ from tuide.widgets.dialogs import (
     PromptDialog,
 )
 from tuide.widgets.editor import EditorPanel, WrappingTabBar
+from tuide.widgets.gitconflicts import GitConflictResolverScreen, GitConflictResolverView
 from tuide.widgets.githistory import GitChangedFilesView, GitLogView
 from tuide.widgets.menubar import MenuBar
 from tuide.widgets.panels import WorkspacePanel
@@ -124,12 +125,8 @@ class ShortcutBar(Widget):
     def on_click(self, event) -> None:
         for start, end, action in self._regions:
             if start <= event.x < end:
-                method = getattr(self.app, f"action_{action}", None)
-                if method is not None:
-                    result = method()
-                    if asyncio.iscoroutine(result):
-                        self.run_worker(result, exclusive=False)
                 event.stop()
+                self.run_worker(self.app.run_action(action), exclusive=False)
                 return
 
 
@@ -551,21 +548,20 @@ class TuideApp(App[None]):
         Binding("escape", "escape_focus", "Dismiss", show=False),
         Binding("tab", "focus_next", "Next Focus", show=False),
         Binding("shift+tab", "focus_previous", "Prev Focus", show=False),
-        Binding("ctrl+shift+p", "show_command_palette", "Palette"),
-        Binding("ctrl+p", "quick_open", "Quick Open"),
-        Binding("ctrl+s", "save_file", "Save"),
+        Binding("ctrl+shift+p", "show_command_palette", "Palette", show=False),
+        Binding("ctrl+p", "quick_open", "Quick Open", show=False),
         Binding("ctrl+z", "undo_in_editor", "Undo", show=False),
         Binding("ctrl+shift+z", "redo_in_editor", "Redo", show=False),
-        Binding("ctrl+w", "close_tab", "Close Tab"),
-        Binding("ctrl+f", "find_in_file", "Find"),
-        Binding("ctrl+shift+f", "find_in_workspace", "Find in Workspace"),
-        Binding("ctrl+.", "show_context_actions", "Context Actions"),
-        Binding("ctrl+b", "toggle_workspace", "Toggle Workspace"),
-        Binding("ctrl+e", "toggle_editor", "Toggle Editor"),
-        Binding("ctrl+j", "toggle_terminal", "Toggle Terminal"),
-        Binding("ctrl+r", "restart_terminal", "Restart Terminal"),
-        Binding("ctrl+t", "new_terminal_tab", "New Terminal Tab", show=False),
-        Binding("ctrl+shift+w", "close_terminal_tab", "Close Terminal Tab", show=False),
+        Binding("ctrl+w", "close_tab", "Close Tab", show=False, priority=True),
+        Binding("ctrl+f", "find_in_file", "Find", priority=True),
+        Binding("ctrl+shift+f", "find_in_workspace", "Find in Workspace", priority=True),
+        Binding("ctrl+.", "show_context_actions", "Context Actions", priority=True),
+        Binding("ctrl+b", "toggle_workspace", "Toggle Workspace", priority=True),
+        Binding("ctrl+e", "toggle_editor", "Toggle Editor", priority=True),
+        Binding("ctrl+j", "toggle_terminal", "Toggle Terminal", priority=True),
+        Binding("ctrl+r", "restart_terminal", "Restart Terminal", priority=True),
+        Binding("ctrl+t", "new_terminal_tab", "New Terminal Tab", show=False, priority=True),
+        Binding("ctrl+shift+w", "close_terminal_tab", "Close Terminal Tab", show=False, priority=True),
         Binding("ctrl+shift+g", "git_branch_history", "Git Log", show=False),
         Binding("ctrl+alt+comma", "shrink_workspace", "Narrow Left", show=False),
         Binding("ctrl+alt+period", "grow_workspace", "Widen Left", show=False),
@@ -658,6 +654,27 @@ class TuideApp(App[None]):
         self.refresh_status()
         self.sync_splitter_visibility()
         self._refresh_branch_indicator()
+        self._open_welcome_if_project()
+        self.set_interval(5.0, self._refresh_dirty_tree)
+        self.run_worker(self._resume_active_conflict_session(), exclusive=False)
+
+    def _open_welcome_if_project(self) -> None:
+        """Open a welcome tab showing the project README, if a workspace root exists."""
+        if not self.workspace_state.roots:
+            return
+        root = self.workspace_state.roots[0]
+        project_name = root.name
+        readme_text: str | None = None
+        for candidate in ("README.md", "readme.md", "README.rst", "README.txt", "README"):
+            readme_path = root / candidate
+            if readme_path.is_file():
+                try:
+                    readme_text = readme_path.read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    pass
+                break
+        editor = self.query_one(EditorPanel)
+        self.run_worker(editor.open_welcome_tab(project_name, readme_text), exclusive=False)
 
     def refresh_status(self) -> None:
         """Update the status bar left text (no git subprocess)."""
@@ -668,11 +685,45 @@ class TuideApp(App[None]):
         except Exception:
             pass
 
+    def _main_editor_panel(self) -> EditorPanel | None:
+        """Return the main editor panel even when a modal screen is active."""
+        try:
+            return self.query_one(EditorPanel)
+        except Exception:
+            pass
+        try:
+            if self.screen_stack:
+                return self.screen_stack[0].query_one(EditorPanel)
+        except Exception:
+            pass
+        return None
+
     def _refresh_branch_indicator(self) -> None:
         """Kick off a background thread to update the branch indicator."""
         if not self.is_mounted:
             return
         self.run_worker(self._fetch_branch_async(), exclusive=True, group="branch-refresh")
+
+    def _refresh_dirty_tree(self) -> None:
+        """Periodically refresh dirty-file markers in the workspace tree."""
+        if not self.is_mounted:
+            return
+        self.run_worker(self._fetch_dirty_paths_async(), exclusive=True, group="dirty-tree")
+
+    async def _fetch_dirty_paths_async(self) -> None:
+        """Fetch changed files from git and update the workspace tree markers."""
+        import asyncio
+        repo_root = await asyncio.to_thread(self._find_repo_root)
+        if repo_root is None:
+            return
+        files: list[tuple[str, str]] = await asyncio.to_thread(
+            self.git_service.status_porcelain, repo_root
+        )
+        dirty: set[str] = {str(repo_root / filepath) for _xy, filepath in files}
+        try:
+            self.query_one(WorkspacePanel).set_dirty_paths(dirty)
+        except Exception:
+            pass
 
     async def _fetch_branch_async(self) -> None:
         """Fetch current branch in a thread and update the indicator."""
@@ -722,10 +773,39 @@ class TuideApp(App[None]):
             if result:
                 on_confirm()
 
-        self.push_screen(
+        self._push_modal_screen(
             ConfirmDialog(title, message, confirm_label=confirm_label),
             callback=_resolve,
         )
+
+    def _restore_focus_after_modal(self, previous_focus: Widget | None) -> None:
+        """Return focus to the prior widget or a stable main-view fallback."""
+        if len(self.screen_stack) > 1:
+            return
+
+        if (
+            previous_focus is not None
+            and previous_focus.is_mounted
+            and previous_focus.screen is self.screen_stack[0]
+        ):
+            previous_focus.focus()
+            return
+
+        try:
+            self.query_one(EditorPanel).focus()
+        except Exception:
+            self.focus()
+
+    def _push_modal_screen(self, screen, callback=None) -> None:
+        """Push a modal and restore main-view focus when it closes."""
+        previous_focus = self.focused
+
+        def _resolve(result: object | None) -> None:
+            if callback is not None:
+                callback(result)
+            self.call_after_refresh(self._restore_focus_after_modal, previous_focus)
+
+        self.push_screen(screen, callback=_resolve)
 
     async def wait_for_screen_result(self, screen) -> object | None:
         """Push a screen and wait for its dismissal result without requiring a worker."""
@@ -736,14 +816,36 @@ class TuideApp(App[None]):
             if not future.done():
                 future.set_result(result)
 
-        self.push_screen(screen, callback=_resolve)
+        self._push_modal_screen(screen, callback=_resolve)
         return await future
+
+    @on(GitCommitScreen.FileDiscarded)
+    def _on_file_discarded(self, event: GitCommitScreen.FileDiscarded) -> None:
+        """Reload the editor tab after a file is restored to HEAD via Discard."""
+        try:
+            editor = self.screen_stack[0].query_one(EditorPanel)
+        except Exception:
+            return
+        editor.reload_file(event.path)
+        self.refresh_status()
+        self._refresh_dirty_tree()
+
+    async def _open_editor_file(self, path: Path) -> None:
+        """Open a file in the editor, supplying git HEAD text for dirty tracking."""
+        repo_root = self.git_service.repo_root_for(path)
+        git_head_text: str | None = None
+        if repo_root is not None:
+            git_head_text = self.git_service.show_file(repo_root, "HEAD", path)
+        editor = self._main_editor_panel()
+        if editor is None:
+            raise NoMatches("Main EditorPanel is not mounted")
+        await editor.open_file(path, git_head_text=git_head_text)
+        self.refresh_status()
 
     @on(DirectoryTree.FileSelected)
     async def open_selected_file(self, event: DirectoryTree.FileSelected) -> None:
         """Open a selected file from the workspace tree."""
-        await self.query_one(EditorPanel).open_file(event.path)
-        self.refresh_status()
+        await self._open_editor_file(event.path)
 
     @on(Select.Changed)
     async def handle_root_switch(self, event: Select.Changed) -> None:
@@ -766,19 +868,6 @@ class TuideApp(App[None]):
         button_id = event.button.id
         if button_id is None:
             return
-
-        if len(self.screen_stack) > 1:
-            top_screen = self.screen_stack[-1]
-            if button_id in {"confirm-cancel", "prompt-cancel", "palette-cancel", "picker-cancel", "help-close"}:
-                top_screen.dismiss(None)
-                return
-            if button_id == "confirm-ok":
-                top_screen.dismiss(True)
-                return
-            if button_id == "prompt-ok":
-                prompt_input = top_screen.query_one("#prompt-input", Input)
-                top_screen.dismiss(prompt_input.value)
-                return
 
         if button_id == "toggle-editor-btn":
             self.action_toggle_editor()
@@ -911,16 +1000,10 @@ class TuideApp(App[None]):
 
     async def _show_tab_context_menu(self, x: int, y: int) -> None:
         """Show a right-click context menu for the editor tab bar."""
-        editor = self.query_one(EditorPanel)
-        items: list[ChoiceItem] = []
-        if editor.active_document is not None:
-            items.append(ChoiceItem("tab.save", "Save file"))
-        items.append(ChoiceItem("tab.close", "Close tab"))
+        items = [ChoiceItem("tab.close", "Close tab")]
 
         action_id = await self.wait_for_screen_result(ContextMenuScreen(items, x, y))
-        if action_id == "tab.save":
-            self.action_save_file()
-        elif action_id == "tab.close":
+        if action_id == "tab.close":
             await self.action_close_tab()
 
     async def _show_editor_context_menu(self, x: int, y: int) -> None:
@@ -948,7 +1031,6 @@ class TuideApp(App[None]):
             ChoiceItem("ctx.definition", "Go to definition"),
             ChoiceItem("ctx.references", "Find references"),
             ChoiceItem("ctx.python_outline", "Python outline"),
-            ChoiceItem("ctx.save", "Save file"),
         ]
 
         action_id = await self.wait_for_screen_result(ContextMenuScreen(items, x, y))
@@ -974,8 +1056,6 @@ class TuideApp(App[None]):
                     await editor.open_readonly_tab(f"line-history:{path.name}:{start}-{end}", history)
                 else:
                     self.notify("No line history found", severity="warning")
-        elif action_id == "ctx.save":
-            self.action_save_file()
         elif action_id in {"ctx.git_diff", "ctx.git_history", "ctx.git_blame",
                            "ctx.definition", "ctx.references", "ctx.python_outline"}:
             mapping = {
@@ -1022,13 +1102,6 @@ class TuideApp(App[None]):
         panel = self.query_one("#terminal-panel")
         panel.display = not panel.display
         self.sync_splitter_visibility()
-        self.refresh_status()
-
-    def action_save_file(self) -> None:
-        """Save the active file if one is open."""
-        saved = self.query_one(EditorPanel).save_active_file()
-        if saved is not None:
-            self.notify(f"Saved {saved.name}")
         self.refresh_status()
 
     def action_undo_in_editor(self) -> None:
@@ -1115,7 +1188,7 @@ class TuideApp(App[None]):
 
     def action_show_help(self) -> None:
         """Show the keybinding help overlay."""
-        self.push_screen(HelpDialog())
+        self._push_modal_screen(HelpDialog())
 
     def command_items(self) -> list[CommandItem]:
         """Return palette commands."""
@@ -1179,7 +1252,6 @@ class TuideApp(App[None]):
             title = "Terminal actions"
         else:
             items = [
-                ChoiceItem("file.save", "Save active file"),
                 ChoiceItem("file.close", "Close active tab"),
                 ChoiceItem("search.find_file", "Find in file"),
                 ChoiceItem("git.diff", "Git diff with branch"),
@@ -1197,9 +1269,6 @@ class TuideApp(App[None]):
             OptionPickerDialog(title, items, placeholder="Filter actions")
         )
         if action_id is None:
-            return
-        if action_id == "file.save":
-            self.action_save_file()
             return
         if action_id == "file.close":
             await self.action_close_tab()
@@ -1298,9 +1367,8 @@ class TuideApp(App[None]):
             return
 
         chosen_path = Path(selected)
-        await self.query_one(EditorPanel).open_file(chosen_path)
+        await self._open_editor_file(chosen_path)
         self.notify(f"Opened {chosen_path.name}")
-        self.refresh_status()
 
     async def action_todo_list(self) -> None:
         """Open the TODO list (or create one in the first workspace root)."""
@@ -1320,8 +1388,7 @@ class TuideApp(App[None]):
                 encoding="utf-8",
             )
 
-        await self.query_one(EditorPanel).open_file(todo_path)
-        self.refresh_status()
+        await self._open_editor_file(todo_path)
 
     async def action_find_in_file(self) -> None:
         """Search for text in the active file and open a results tab."""
@@ -1404,8 +1471,143 @@ class TuideApp(App[None]):
         """Open Git command output in a result tab."""
         branch = self.git_service.current_branch(repo_root) or "detached"
         text = f"Repo: {repo_root}\nBranch: {branch}\n\n{output}"
-        await self.query_one(EditorPanel).open_readonly_tab(title, text)
+        editor = self.screen_stack[0].query_one(EditorPanel)
+        await editor.open_readonly_tab(title, text)
         self.refresh_status()
+
+    def _git_error_summary(self, action: str, output: str) -> str:
+        """Return a compact notification message for a failed Git action."""
+        first_line = output.splitlines()[0].strip() if output else ""
+        if not first_line:
+            first_line = "unknown error"
+        return f"{action} failed: {first_line}"
+
+    async def _refresh_repo_after_git_change(
+        self,
+        repo_root: Path,
+        *,
+        reload_documents: bool = False,
+    ) -> None:
+        """Refresh branch state, dirty markers, and open docs after a git operation."""
+        self._refresh_branch_indicator()
+        self._refresh_dirty_tree()
+        if reload_documents:
+            editor = self._main_editor_panel()
+            if editor is not None:
+                editor.refresh_repo_documents(
+                    repo_root,
+                    lambda path: self.git_service.show_file(repo_root, "HEAD", path),
+                )
+        self.refresh_status()
+
+    def _sync_open_file_with_git(self, repo_root: Path, path: Path) -> None:
+        """Reload one open file against disk and HEAD after a conflict action."""
+        editor = self._main_editor_panel()
+        if editor is None:
+            return
+        editor.sync_file_with_git(path, self.git_service.show_file(repo_root, "HEAD", path))
+        self._refresh_dirty_tree()
+        self.refresh_status()
+
+    async def _close_git_update_tabs(self) -> None:
+        """Close transient tabs created by the update/conflict workflow."""
+        screen = self._active_conflict_screen()
+        if screen is not None:
+            screen.dismiss(None)
+        editor = self._main_editor_panel()
+        if editor is None:
+            return
+        for title in (
+            "Git Conflicts",
+            "git:update",
+            "git:update:rebase",
+            "git:update:merge",
+            "git:update:continue",
+            "git:update:abort",
+        ):
+            await editor.close_virtual_tab(title)
+
+    def _active_conflict_screen(self) -> GitConflictResolverScreen | None:
+        """Return the currently-open conflict screen when one is active."""
+        if len(self.screen_stack) <= 1:
+            return None
+        top = self.screen_stack[-1]
+        if isinstance(top, GitConflictResolverScreen):
+            return top
+        return None
+
+    async def _show_conflict_resolver(self, repo_root: Path) -> bool:
+        """Open or refresh the conflict resolver tab when a merge/rebase is active."""
+        state = await asyncio.to_thread(self.git_service.conflict_state, repo_root)
+        if state is None:
+            screen = self._active_conflict_screen()
+            if screen is not None:
+                screen.dismiss(None)
+            try:
+                editor = self.query_one(EditorPanel)
+            except Exception:
+                editor = None
+            if editor is not None:
+                await editor.close_virtual_tab("Git Conflicts")
+            self.refresh_status()
+            return False
+        screen = self._active_conflict_screen()
+        if screen is not None:
+            screen.set_state(state, repo_root)
+        else:
+            self._push_modal_screen(
+                GitConflictResolverScreen(state, repo_root),
+                callback=lambda _result: self.run_worker(self._close_git_update_tabs(), exclusive=False),
+            )
+        self.refresh_status()
+        return True
+
+    async def _resume_active_conflict_session(self) -> None:
+        """Reopen the conflict resolver when the repo is already mid merge/rebase."""
+        repo_root = await asyncio.to_thread(self._find_repo_root)
+        if repo_root is None:
+            return
+        if await self._show_conflict_resolver(repo_root):
+            self.notify(
+                "A merge or rebase is already in progress. Finish it in Git Conflicts or abort it.",
+                severity="warning",
+            )
+
+    async def _continue_diverged_update(self, repo_root: Path, strategy: str) -> None:
+        """Continue an Update flow with an explicit merge or rebase strategy."""
+        if strategy == "rebase":
+            action_name = "Rebase"
+            title = "git:update:rebase"
+            func = self.git_service.rebase_local_commits
+            progress = "Rebasing local commits onto upstream…"
+            success_message = "Current branch updated via rebase"
+        else:
+            action_name = "Merge"
+            title = "git:update:merge"
+            func = self.git_service.merge_remote_changes
+            progress = "Merging remote changes into current branch…"
+            success_message = "Current branch updated via merge"
+
+        self.notify(progress, severity="information")
+        result = await asyncio.to_thread(func, repo_root)
+        await self.open_git_output_tab(title, repo_root, result.output)
+
+        if result.status == "success":
+            await self._refresh_repo_after_git_change(repo_root, reload_documents=True)
+            await self._close_git_update_tabs()
+            self.notify(success_message)
+            return
+
+        if result.status == "conflict":
+            await self._refresh_repo_after_git_change(repo_root, reload_documents=True)
+            await self._show_conflict_resolver(repo_root)
+            self.notify(
+                f"{action_name} hit conflicts. Resolve them in Git Conflicts, then continue.",
+                severity="warning",
+            )
+            return
+
+        self.notify(self._git_error_summary(action_name, result.output), severity="error")
 
     async def action_git_session(self) -> None:
         """Open project-level Git actions from the top bar."""
@@ -1419,9 +1621,9 @@ class TuideApp(App[None]):
                 f"Git - {repo_root.name} ({branch})",
                 [
                     ChoiceItem(
-                        id="git.session.pull",
-                        label="Update Project",
-                        description="Pull latest changes with ff-only",
+                        id="git.session.update",
+                        label="Update",
+                        description="Fast-forward the current branch from upstream",
                     ),
                     ChoiceItem(
                         id="git.session.commit",
@@ -1441,12 +1643,7 @@ class TuideApp(App[None]):
                     ChoiceItem(
                         id="git.session.fetch",
                         label="Fetch",
-                        description="Refresh remote branches without merging",
-                    ),
-                    ChoiceItem(
-                        id="git.session.status",
-                        label="Status",
-                        description="Show branch and working tree changes",
+                        description="Refresh remote refs and branch info without changing files",
                     ),
                     ChoiceItem(
                         id="git.session.branch_history",
@@ -1464,26 +1661,65 @@ class TuideApp(App[None]):
             await self.action_git_branch_history()
             return
 
-        if action_id == "git.session.status":
-            status = self.git_service.status_summary(repo_root)
-            if status is None:
-                self.notify("Unable to read Git status", severity="error")
+        if action_id == "git.session.update":
+            if await self._show_conflict_resolver(repo_root):
+                self.notify(
+                    "Finish or abort the current merge/rebase before running Update again.",
+                    severity="warning",
+                )
                 return
-            await self.open_git_output_tab("git:status", repo_root, status)
-            return
-
-        if action_id == "git.session.pull":
-            self.notify("Pulling…", severity="information")
-            success, output = await asyncio.to_thread(self.git_service.pull, repo_root)
-            await self.open_git_output_tab("git:update", repo_root, output)
-            self.notify("Project updated" if success else "Git pull failed", severity="information" if success else "error")
+            self.notify("Updating current branch…", severity="information")
+            result = await asyncio.to_thread(
+                self.git_service.update_current_branch, repo_root
+            )
+            await self.open_git_output_tab("git:update", repo_root, result.output)
+            if result.status == "success":
+                await self._refresh_repo_after_git_change(repo_root, reload_documents=True)
+                self.notify("Current branch updated")
+                return
+            if result.status == "diverged":
+                choice = await self.wait_for_screen_result(
+                    OptionPickerDialog(
+                        "Current branch has diverged from upstream",
+                        [
+                            ChoiceItem(
+                                id="git.update.rebase",
+                                label="Rebase Local Commits",
+                                description="Replay your local commits on top of upstream",
+                            ),
+                            ChoiceItem(
+                                id="git.update.merge",
+                                label="Merge Remote Changes",
+                                description="Create a merge commit if needed",
+                            ),
+                            ChoiceItem(
+                                id="git.update.cancel",
+                                label="Cancel",
+                                description="Leave the branch unchanged",
+                            ),
+                        ],
+                        placeholder="Choose how to continue",
+                    )
+                )
+                if choice == "git.update.rebase":
+                    await self._continue_diverged_update(repo_root, "rebase")
+                elif choice == "git.update.merge":
+                    await self._continue_diverged_update(repo_root, "merge")
+                return
+            self.notify(
+                self._git_error_summary("Update", result.output),
+                severity="error",
+            )
             return
 
         if action_id == "git.session.fetch":
             self.notify("Fetching…", severity="information")
             success, output = await asyncio.to_thread(self.git_service.fetch, repo_root)
             await self.open_git_output_tab("git:fetch", repo_root, output)
-            self.notify("Fetch completed" if success else "Fetch failed", severity="information" if success else "error")
+            self.notify(
+                "Fetch completed" if success else self._git_error_summary("Fetch", output),
+                severity="information" if success else "error",
+            )
             return
 
         if action_id == "git.session.branch":
@@ -1517,21 +1753,60 @@ class TuideApp(App[None]):
             return
 
         if action_id == "git.session.commit":
-            message = await self.wait_for_screen_result(
+            if self.git_service.conflict_state(repo_root) is not None:
+                await self._show_conflict_resolver(repo_root)
+                self.notify(
+                    "A merge or rebase conflict is still in progress. Resolve or abort it before using Commit.",
+                    severity="warning",
+                )
+                return
+            result = await self.wait_for_screen_result(
                 GitCommitScreen(repo_root, self.git_service)
             )
-            if not message:
+            if not result:
                 return
-            success, output = self.git_service.commit_all(repo_root, str(message))
+            message, push_after = result
+            success, output = await asyncio.to_thread(
+                self.git_service.commit_all, repo_root, str(message)
+            )
             await self.open_git_output_tab("git:commit", repo_root, output)
-            self.notify("Commit created" if success else "Commit failed", severity="information" if success else "error")
+            if success:
+                self._refresh_dirty_tree()
+                try:
+                    self.query_one(EditorPanel).mark_all_as_clean()
+                except Exception:
+                    pass
+                if push_after:
+                    self.notify("Pushing…", severity="information")
+                    push_success, push_output = await asyncio.to_thread(
+                        self.git_service.push, repo_root
+                    )
+                    await self.open_git_output_tab("git:push", repo_root, push_output)
+                    if push_success:
+                        self.notify("Commit created and pushed")
+                    else:
+                        first_line = (
+                            push_output.splitlines()[0] if push_output else "unknown error"
+                        )
+                        self.notify(
+                            f"Commit created, but push failed: {first_line}",
+                            severity="error",
+                        )
+                else:
+                    self.notify("Commit created")
+            else:
+                first_line = output.splitlines()[0] if output else "unknown error"
+                self.notify(f"Commit failed: {first_line}", severity="error")
             return
 
         if action_id == "git.session.push":
             self.notify("Pushing…", severity="information")
             success, output = await asyncio.to_thread(self.git_service.push, repo_root)
             await self.open_git_output_tab("git:push", repo_root, output)
-            self.notify("Push completed" if success else "Push failed", severity="information" if success else "error")
+            self.notify(
+                "Push completed" if success else self._git_error_summary("Push", output),
+                severity="information" if success else "error",
+            )
             return
 
     def active_file_context(self) -> tuple[Path, Path] | None:
@@ -1579,6 +1854,114 @@ class TuideApp(App[None]):
             f"Commit {commit[:8]}", view, always_replace=True
         )
         self.refresh_status()
+
+    async def on_git_conflict_resolver_view_refresh_requested(
+        self,
+        event: GitConflictResolverView.RefreshRequested,
+    ) -> None:
+        """Reload the conflict resolver from current disk and git state."""
+        await self._show_conflict_resolver(event.repo_root)
+        self._refresh_dirty_tree()
+
+    async def on_git_conflict_resolver_view_apply_edited_result(
+        self,
+        event: GitConflictResolverView.ApplyEditedResult,
+    ) -> None:
+        """Write the edited result pane back to the conflicted file."""
+        success, output = await asyncio.to_thread(
+            self.git_service.write_worktree_file,
+            event.repo_root,
+            event.filepath,
+            event.text,
+        )
+        if not success:
+            self.notify(output, severity="error")
+            return
+        self._sync_open_file_with_git(event.repo_root, event.repo_root / event.filepath)
+        await self._show_conflict_resolver(event.repo_root)
+        self.notify(output)
+
+    async def on_git_conflict_resolver_view_edit_manually(
+        self,
+        event: GitConflictResolverView.EditManually,
+    ) -> None:
+        """Open the conflicted file for manual editing."""
+        path = event.repo_root / event.filepath
+        if not path.exists():
+            self.notify("This conflicted file is not present in the working tree.", severity="error")
+            return
+        await self._open_location(path, event.start_line, 1)
+        self.notify(
+            "Opened the real conflicted file. Git markers in that file are expected until you finish resolving or abort the operation.",
+            severity="information",
+        )
+
+    async def on_git_conflict_resolver_view_mark_resolved(
+        self,
+        event: GitConflictResolverView.MarkResolved,
+    ) -> None:
+        """Stage a manually resolved file and refresh conflict state."""
+        success, output = await asyncio.to_thread(
+            self.git_service.mark_conflict_resolved,
+            event.repo_root,
+            event.filepath,
+        )
+        if not success:
+            self.notify(output, severity="error")
+            return
+        self._sync_open_file_with_git(event.repo_root, event.repo_root / event.filepath)
+        await self._show_conflict_resolver(event.repo_root)
+        self.notify(output)
+
+    async def on_git_conflict_resolver_view_continue_requested(
+        self,
+        event: GitConflictResolverView.ContinueRequested,
+    ) -> None:
+        """Continue the active merge or rebase after resolution."""
+        self.notify("Continuing update…", severity="information")
+        result = await asyncio.to_thread(
+            self.git_service.continue_conflict_operation,
+            event.repo_root,
+        )
+        await self.open_git_output_tab("git:update:continue", event.repo_root, result.output)
+        if result.status == "success":
+            await self._refresh_repo_after_git_change(event.repo_root, reload_documents=True)
+            await self._close_git_update_tabs()
+            self.notify("Update completed")
+            return
+        if result.status == "conflict":
+            await self._refresh_repo_after_git_change(event.repo_root, reload_documents=True)
+            await self._show_conflict_resolver(event.repo_root)
+            self.notify("More conflicts need resolution before the update can finish.", severity="warning")
+            return
+        self.notify(self._git_error_summary("Continue", result.output), severity="error")
+
+    async def on_git_conflict_resolver_view_abort_requested(
+        self,
+        event: GitConflictResolverView.AbortRequested,
+    ) -> None:
+        """Abort the active merge or rebase and restore the repo to a clean branch state."""
+        self.notify("Aborting update…", severity="information")
+        result = await asyncio.to_thread(
+            self.git_service.abort_conflict_operation,
+            event.repo_root,
+        )
+        await self.open_git_output_tab("git:update:abort", event.repo_root, result.output)
+        if result.status == "success":
+            await self._refresh_repo_after_git_change(event.repo_root, reload_documents=True)
+            await self._close_git_update_tabs()
+            self.notify("Update aborted")
+            return
+        self.notify(self._git_error_summary("Abort", result.output), severity="error")
+
+    async def on_editor_panel_virtual_tab_closed(
+        self,
+        event: EditorPanel.VirtualTabClosed,
+    ) -> None:
+        """When Git Conflicts closes, clean up the rest of the transient update tabs."""
+        if event.title != "Git Conflicts":
+            return
+        await self._close_git_update_tabs()
 
     async def on_git_changed_files_view_file_selected(
         self, event: GitChangedFilesView.FileSelected
@@ -1952,9 +2335,10 @@ class TuideApp(App[None]):
 
     async def _open_location(self, path: Path, line: int, column: int) -> None:
         """Open a file and move the cursor to a 1-based line and column."""
-        editor = self.query_one(EditorPanel)
-        await editor.open_file(path)
-        self.refresh_status()
+        await self._open_editor_file(path)
+        editor = self._main_editor_panel()
+        if editor is None:
+            return
         text_area = editor.active_text_area
         if text_area is None:
             return

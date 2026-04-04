@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from textual import on
 from textual.app import ComposeResult
+from textual.message import Message
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.events import Key
 from textual.geometry import Spacing
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, ListItem, ListView, OptionList, Static, TextArea
+from textual.widgets import Button, Input, Label, ListItem, ListView, OptionList, Static
 from textual.widgets.option_list import Option
 
 from tuide.models import ChoiceItem, CommandItem
+from tuide.widgets.diffview import DiffView
 
 
 class EscapeDismissMixin:
@@ -118,6 +121,7 @@ class ConfirmDialog(EscapeDismissMixin, ModalScreen[bool | None]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
+        event.stop()
         if event.button.id == "confirm-ok":
             self.dismiss(True)
             return
@@ -175,7 +179,6 @@ class HelpDialog(EscapeDismissMixin, ModalScreen[None]):
             yield Label("tuide keybindings", id="help-title")
             yield Label("Tab / Shift+Tab  cycle focus between panels", classes="help-line")
             yield Label("Esc              return focus to the editor", classes="help-line")
-            yield Label("Ctrl+S           save active file", classes="help-line")
             yield Label("Ctrl+Z           undo last edit", classes="help-line")
             yield Label("Ctrl+Shift+Z     redo last undone edit", classes="help-line")
             yield Label("Ctrl+W           close active tab", classes="help-line")
@@ -196,6 +199,7 @@ class HelpDialog(EscapeDismissMixin, ModalScreen[None]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Dismiss on button press."""
+        event.stop()
         if event.button.id == "help-close":
             self.dismiss(None)
 
@@ -275,6 +279,7 @@ class PromptDialog(EscapeDismissMixin, ModalScreen[str | None]):
         self.dismiss(self.query_one("#prompt-input", Input).value)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
         if event.button.id == "prompt-ok":
             self.dismiss(self.query_one("#prompt-input", Input).value)
             return
@@ -350,6 +355,7 @@ class CommandPaletteDialog(EscapeDismissMixin, ModalScreen[str | None]):
         self.dismiss(None)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
         if event.button.id == "palette-cancel":
             self.dismiss(None)
 
@@ -464,6 +470,7 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
         self.dismiss(None)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
         if event.button.id == "picker-cancel":
             self.dismiss(None)
 
@@ -689,7 +696,7 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
         self.dismiss((path_str, line, column))
 
 
-class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
+class GitCommitScreen(EscapeDismissMixin, ModalScreen[tuple[str, bool] | None]):
     """Full-featured commit screen: file list, diff preview, message input."""
 
     CSS = """
@@ -699,7 +706,7 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
 
     #commit-dialog {
         width: 92%;
-        height: 88%;
+        height: 90%;
         border: solid #30363d;
         background: #161b22;
     }
@@ -710,7 +717,6 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         color: #e6edf3;
         padding: 0 1;
         text-style: bold;
-        dock: top;
     }
 
     #commit-body {
@@ -760,14 +766,18 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         padding: 0 1;
     }
 
-    #diff-view {
+    #diff-container {
         height: 1fr;
         border: none;
         background: #0d1117;
     }
 
+    #diff-container DiffView {
+        height: 1fr;
+    }
+
     #message-area {
-        height: 7;
+        height: 4;
         border-top: solid #21262d;
         padding: 0 1;
     }
@@ -785,33 +795,52 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         color: #e6edf3;
     }
 
-    #message-hint {
-        height: 1;
-        color: #6e7681;
-    }
-
     #commit-actions {
         height: 3;
         align: right middle;
         padding: 0 1;
-        dock: bottom;
+        border-top: solid #21262d;
+    }
+
+    #commit-actions Button {
+        height: 1;
+        min-height: 1;
+        min-width: 10;
+        padding: 0 2;
+        border: none;
+        margin-left: 1;
     }
 
     #cancel-btn {
         background: #21262d;
-        border: solid #30363d;
         color: #8b949e;
-        margin-right: 1;
+    }
+
+    #discard-btn {
+        background: #6e1a1a;
+        color: #e5534b;
+    }
+
+    #discard-btn:hover {
+        background: #a32020;
     }
 
     #do-commit-btn {
         background: #1a7f37;
-        border: solid #2ea043;
         color: #ffffff;
     }
 
     #do-commit-btn:hover {
         background: #2ea043;
+    }
+
+    #do-commit-push-btn {
+        background: #0969da;
+        color: #ffffff;
+    }
+
+    #do-commit-push-btn:hover {
+        background: #218bff;
     }
 
     .no-changes-label {
@@ -830,11 +859,17 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         "!": "#6e7681",
     }
 
+    class FileDiscarded(Message):
+        def __init__(self, path: Path) -> None:
+            self.path = path
+            super().__init__()
+
     def __init__(self, repo_root: Path, git_service) -> None:
         super().__init__()
         self.repo_root = repo_root
         self.git_service = git_service
         self._files: list[tuple[str, str]] = []  # (xy_status, filepath)
+        self._current_diff_index: int | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="commit-dialog"):
@@ -845,16 +880,21 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
                     yield ListView(id="file-list")
                 with Vertical(id="diff-panel"):
                     yield Label("Select a file to preview its diff", id="diff-header")
-                    yield TextArea("", read_only=True, id="diff-view")
+                    yield Vertical(id="diff-container")
             with Vertical(id="message-area"):
                 yield Label("Commit message", id="message-label")
                 yield Input(placeholder="Enter commit message…", id="message-input")
-                yield Label("Press Enter in the message field to commit", id="message-hint")
             with Horizontal(id="commit-actions"):
                 yield Button("Cancel", id="cancel-btn")
+                yield Button("Discard File", id="discard-btn", disabled=True)
                 yield Button("Commit", id="do-commit-btn")
+                yield Button("Commit & Push", id="do-commit-push-btn")
 
     def on_mount(self) -> None:
+        branch = self.git_service.current_branch(self.repo_root) or "detached"
+        self.query_one("#commit-title-bar", Label).update(
+            f"Git Commit  —  {self.repo_root.name}  \u2387 {branch}"
+        )
         self._refresh_file_list()
         try:
             self.query_one("#file-list", ListView).focus()
@@ -866,9 +906,11 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         file_list = self.query_one("#file-list", ListView)
         header = self.query_one("#file-panel-header", Label)
         commit_button = self.query_one("#do-commit-btn", Button)
+        commit_push_button = self.query_one("#do-commit-push-btn", Button)
         file_list.clear()
         header.update(f"Changes ({len(self._files)})")
         commit_button.disabled = not bool(self._files)
+        commit_push_button.disabled = not bool(self._files)
         if not self._files:
             file_list.append(ListItem(Label("No changes to commit", classes="no-changes-label")))
             self._show_diff(None)
@@ -880,16 +922,41 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
         self._show_diff(0)
 
     def _show_diff(self, index: int | None) -> None:
-        header = self.query_one("#diff-header", Label)
-        diff_view = self.query_one("#diff-view", TextArea)
+        self._current_diff_index = index
+        discard_btn = self.query_one("#discard-btn", Button)
+        discard_btn.disabled = index is None or index < 0 or index >= len(self._files)
+        self.run_worker(self._load_diff(index), exclusive=True, group="diff-render")
+
+    async def _load_diff(self, index: int | None) -> None:
+        try:
+            header = self.query_one("#diff-header", Label)
+            container = self.query_one("#diff-container", Vertical)
+        except Exception:
+            return  # screen already dismissed
+
+        await container.remove_children()
+
         if index is None or index < 0 or index >= len(self._files):
             header.update("Select a file to preview its diff")
-            diff_view.text = "(No diff available)"
             return
+
         _xy, filepath = self._files[index]
         header.update(f"  {filepath}")
-        diff = self.git_service.file_diff_workdir(self.repo_root, filepath)
-        diff_view.text = diff or "(No diff available)"
+
+        full_path = self.repo_root / filepath
+        left_text = await asyncio.to_thread(
+            lambda: self.git_service.show_file(self.repo_root, "HEAD", full_path) or ""
+        )
+        right_text = await asyncio.to_thread(
+            lambda: full_path.read_text(encoding="utf-8", errors="replace") if full_path.exists() else ""
+        )
+
+        try:
+            container = self.query_one("#diff-container", Vertical)
+        except Exception:
+            return  # dismissed while fetching
+
+        await container.mount(DiffView("HEAD", left_text, filepath, right_text))
 
     def _format_status_line(self, xy: str, filepath: str) -> str:
         x, y = xy[0], xy[1] if len(xy) > 1 else " "
@@ -910,20 +977,38 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
     def _on_file_selected(self, event: ListView.Selected) -> None:
         self._show_diff(event.list_view.index)
 
+    @on(Button.Pressed, "#discard-btn")
+    def _on_discard(self) -> None:
+        idx = self._current_diff_index
+        if idx is None or idx < 0 or idx >= len(self._files):
+            return
+        _xy, filepath = self._files[idx]
+        ok, _output = self.git_service.restore_file(self.repo_root, filepath)
+        if ok:
+            self.notify(f"Discarded changes: {Path(filepath).name}")
+            self.post_message(self.FileDiscarded(self.repo_root / filepath))
+        else:
+            self.notify(f"Failed to discard {Path(filepath).name}", severity="error")
+        self._refresh_file_list()
+
     @on(Button.Pressed, "#cancel-btn")
     def _on_cancel(self) -> None:
         self.dismiss(None)
 
     @on(Button.Pressed, "#do-commit-btn")
     def _on_commit_button(self) -> None:
-        self._submit_commit()
+        self._submit_commit(push_after=False)
+
+    @on(Button.Pressed, "#do-commit-push-btn")
+    def _on_commit_push_button(self) -> None:
+        self._submit_commit(push_after=True)
 
     @on(Input.Submitted, "#message-input")
     def _on_commit_enter(self, event: Input.Submitted) -> None:
         event.stop()
-        self._submit_commit()
+        self._submit_commit(push_after=False)
 
-    def _submit_commit(self) -> None:
+    def _submit_commit(self, *, push_after: bool) -> None:
         if not self._files:
             self.notify("No changes to commit", severity="warning")
             return
@@ -932,4 +1017,4 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[str | None]):
             self.notify("Commit message cannot be empty", severity="warning")
             self.query_one("#message-input", Input).focus()
             return
-        self.dismiss(message)
+        self.dismiss((message, push_after))

@@ -63,7 +63,7 @@ src/tuide/
 
 | Widget | Role |
 |---|---|
-| `EditorPanel` | `TabbedContent` wrapping `TextArea` per open file; tracks dirty state |
+| `EditorPanel` | `TabbedContent` wrapping `TextArea` per open file; writes edits through immediately and tracks git-vs-HEAD dirty state |
 | `WorkspacePanel` | `DirectoryTree` with root selector |
 | `TerminalPanel` | Wraps `textual-terminal`; falls back to a read-only label if unavailable |
 | Dialogs (`dialogs.py`) | `ConfirmDialog`, `PromptDialog`, `CommandPaletteDialog`, `OptionPickerDialog`, `HelpDialog` — all use `EscapeDismissMixin` |
@@ -75,6 +75,15 @@ src/tuide/
 - **Async dialogs**: modals return values via `await wait_for_screen_result(screen)`.
 - **TOML persistence**: workspace roots and config are stored as TOML; use `tomli` to read, `tomli_w` to write.
 - **Python 3.11+ features used**: `match` statements, `__slots__`, `tomllib` (stdlib).
+
+## Product logic to preserve
+
+- **No manual save step**: editor changes are written to disk immediately on every `TextArea.Changed` event. Do not reintroduce `Ctrl+S`, save buttons, or "save file" menu actions unless the product model changes deliberately.
+- **Dirty means git-dirty, not unsaved**: yellow tab styling and workspace-tree markers indicate the file differs from `git HEAD`, not that it is waiting to be written to disk.
+- **Commit resets dirty state**: after a successful git commit, open documents should refresh their `git_head_text`, return to the clean styling, and lose workspace dirty markers.
+- **Dismiss must always work**: modal dialogs and popups should reliably return to the main IDE view via `Esc`, `Back`, or `Cancel`. Avoid app-level button routing that can conflict with dialog-local dismissal.
+- **Esc goes back one layer**: `Esc` should dismiss the active modal or popup first; if no overlay is open, it should return focus to the main editor view rather than doing nothing.
+- **Shortcut bar is curated, not exhaustive**: the bottom bar should only show the highest-value shortcuts. Hidden keybindings may still exist, but low-value or redundant actions should stay off the bar.
 
 ## Implementation status
 

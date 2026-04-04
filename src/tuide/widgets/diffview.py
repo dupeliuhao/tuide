@@ -24,15 +24,25 @@ def _delta_available() -> bool:
     return shutil.which("delta") is not None
 
 
-def _run_delta(left_title: str, left_text: str, right_title: str, right_text: str, width: int) -> str | None:
+def _run_delta(
+    left_title: str,
+    left_text: str,
+    right_title: str,
+    right_text: str,
+    width: int,
+    *,
+    full_context: bool = False,
+) -> str | None:
     """Pipe a unified diff through delta and return the ANSI output, or None on failure."""
     left_lines = left_text.splitlines(keepends=True)
     right_lines = right_text.splitlines(keepends=True)
+    context_lines = max(len(left_lines), len(right_lines)) if full_context else 3
 
     unified = difflib.unified_diff(
         left_lines, right_lines,
         fromfile=left_title,
         tofile=right_title,
+        n=context_lines,
     )
     diff_input = "".join(unified)
 
@@ -41,7 +51,9 @@ def _run_delta(left_title: str, left_text: str, right_title: str, right_text: st
             [
                 "delta",
                 f"--width={width}",
+                "--side-by-side",
                 "--line-numbers",
+                "--syntax-theme=GitHub",
                 "--hunk-header-style=file line-number syntax",
                 "--hunk-header-decoration-style=box",
             ],
@@ -53,6 +65,13 @@ def _run_delta(left_title: str, left_text: str, right_title: str, right_text: st
         return result.stdout
     except Exception:
         return None
+
+
+def _pad_cell(text: str, width: int) -> str:
+    visible = text.expandtabs(4)
+    if len(visible) > width:
+        return visible[: max(0, width - 1)] + "…"
+    return visible.ljust(width)
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +120,104 @@ def _build_diff_markup(left_lines: list[str], right_lines: list[str]) -> tuple[T
     return left_rich, right_rich
 
 
+def _build_side_by_side_markup(left_lines: list[str], right_lines: list[str], width: int) -> Text:
+    """Return a single shared-scroll side-by-side diff rendering."""
+    content = Text(no_wrap=True, overflow="ignore")
+    left_width = max(24, (width - 18) // 2)
+    right_width = max(24, width - left_width - 18)
+    matcher = difflib.SequenceMatcher(None, left_lines, right_lines, autojunk=False)
+    left_ln = 1
+    right_ln = 1
+
+    def append_row(
+        left_number: int | None,
+        left_text: str,
+        left_style: str,
+        right_number: int | None,
+        right_text: str,
+        right_style: str,
+    ) -> None:
+        if left_number is None:
+            content.append("     ", style=_GUTTER_STYLE)
+        else:
+            content.append(f"{left_number:4} ", style=_GUTTER_STYLE)
+        content.append("│ ", style=_GUTTER_STYLE)
+        content.append(_pad_cell(left_text, left_width), style=left_style)
+        content.append(" │ ", style=_GUTTER_STYLE)
+        if right_number is None:
+            content.append("     ", style=_GUTTER_STYLE)
+        else:
+            content.append(f"{right_number:4} ", style=_GUTTER_STYLE)
+        content.append("│ ", style=_GUTTER_STYLE)
+        content.append(_pad_cell(right_text, right_width), style=right_style)
+        content.append("\n")
+
+    for opcode, a0, a1, b0, b1 in matcher.get_opcodes():
+        left_chunk = left_lines[a0:a1]
+        right_chunk = right_lines[b0:b1]
+        row_count = max(len(left_chunk), len(right_chunk))
+        for row_index in range(row_count):
+            left_line = left_chunk[row_index] if row_index < len(left_chunk) else None
+            right_line = right_chunk[row_index] if row_index < len(right_chunk) else None
+
+            if opcode == "equal":
+                left_style = right_style = _EQUAL_STYLE
+            elif opcode == "insert":
+                left_style = _EQUAL_STYLE
+                right_style = _ADDED_STYLE
+            elif opcode == "delete":
+                left_style = _REMOVED_STYLE
+                right_style = _EQUAL_STYLE
+            else:
+                left_style = _REMOVED_STYLE
+                right_style = _ADDED_STYLE
+
+            append_row(
+                left_ln if left_line is not None else None,
+                left_line or "",
+                left_style,
+                right_ln if right_line is not None else None,
+                right_line or "",
+                right_style,
+            )
+
+            if left_line is not None:
+                left_ln += 1
+            if right_line is not None:
+                right_ln += 1
+
+    return content
+
+
+def render_side_by_side_diff(
+    left_title: str,
+    left_text: str,
+    right_title: str,
+    right_text: str,
+    width: int,
+    *,
+    full_context: bool = False,
+) -> Text:
+    """Render a side-by-side diff into a single rich Text block."""
+    if _delta_available():
+        output = _run_delta(
+            left_title,
+            left_text,
+            right_title,
+            right_text,
+            width,
+            full_context=full_context,
+        )
+        if output:
+            return Text.from_ansi(output)
+
+    return _build_side_by_side_markup(
+        left_text.splitlines(),
+        right_text.splitlines(),
+        width,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Widget
 # ---------------------------------------------------------------------------
@@ -140,9 +257,13 @@ class DiffView(Horizontal):
 
     def _render_delta(self) -> None:
         width = self.size.width or shutil.get_terminal_size().columns
-        output = _run_delta(self.left_title, self.left_text, self.right_title, self.right_text, width)
         content = self.query_one("#delta-content", Static)
-        if output:
-            content.update(Text.from_ansi(output))
-        else:
-            content.update("[red]delta failed — check that it is on PATH[/red]")
+        content.update(
+            render_side_by_side_diff(
+                self.left_title,
+                self.left_text,
+                self.right_title,
+                self.right_text,
+                width,
+            )
+        )
