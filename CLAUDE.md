@@ -84,6 +84,8 @@ src/tuide/
 - **Dismiss must always work**: modal dialogs and popups should reliably return to the main IDE view via `Esc`, `Back`, or `Cancel`. Avoid app-level button routing that can conflict with dialog-local dismissal.
 - **Esc goes back one layer**: `Esc` should dismiss the active modal or popup first; if no overlay is open, it should return focus to the main editor view rather than doing nothing.
 - **Shortcut bar is curated, not exhaustive**: the bottom bar should only show the highest-value shortcuts. Hidden keybindings may still exist, but low-value or redundant actions should stay off the bar.
+- **Heavy Git views should stay incremental**: large diff views, conflict resolvers, and branch pickers should prefer pagination, lazy loading, or current-item-first rendering over eagerly rendering everything at once.
+- **Remote Git actions must stay async and explicit**: fetch, push, update, and similar remote operations should not block the UI thread; they should run asynchronously and always expose clear progress, success, and failure feedback.
 
 ## Implementation status
 
