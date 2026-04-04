@@ -6,7 +6,7 @@ from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.events import Key, MouseScrollDown, MouseScrollUp
 from textual.message import Message
 from textual.screen import ModalScreen
@@ -21,15 +21,6 @@ from tuide.widgets.editor import _apply_language, build_editor_theme, detect_lan
 class ConflictMergePane(TextArea):
     """Text area used for 3-pane merge editing."""
 
-    class Scrolled(Message):
-        """A merge pane scrolled and peers should stay aligned."""
-
-        def __init__(self, view_id: str, scroll_x: float, scroll_y: float) -> None:
-            super().__init__()
-            self.view_id = view_id
-            self.scroll_x = scroll_x
-            self.scroll_y = scroll_y
-
     class WheelScrolled(Message):
         """Mouse wheel intent routed to the shared result pane."""
 
@@ -38,7 +29,7 @@ class ConflictMergePane(TextArea):
             self.view_id = view_id
             self.direction = direction
 
-    def __init__(self, *, view_id: str, read_only: bool, primary_scroll: bool = False) -> None:
+    def __init__(self, *, view_id: str, read_only: bool) -> None:
         super().__init__(
             "",
             id=view_id,
@@ -46,15 +37,14 @@ class ConflictMergePane(TextArea):
             soft_wrap=False,
             tab_behavior="indent",
         )
-        self._suppress_scroll_events = False
-        self._primary_scroll = primary_scroll
         try:
             self.register_theme(build_editor_theme())
             self.theme = "tuide_code"
         except Exception:
             pass
         self.show_line_numbers = True
-        self.show_vertical_scrollbar = primary_scroll
+        self.show_vertical_scrollbar = False
+        self.can_focus = not read_only
         try:
             self.cursor_blink = not read_only
         except Exception:
@@ -65,25 +55,6 @@ class ConflictMergePane(TextArea):
         self.load_text(text)
         _apply_language(self, detect_language(path))
 
-    def sync_scroll(self, scroll_x: float, scroll_y: float) -> None:
-        """Set scroll position without echoing a new sync event."""
-        self._suppress_scroll_events = True
-        try:
-            self.scroll_x = scroll_x
-            self.scroll_y = scroll_y
-        finally:
-            self._suppress_scroll_events = False
-
-    def watch_scroll_y(self, old_value: float, new_value: float) -> None:
-        if self._suppress_scroll_events or not self.is_mounted or not self._primary_scroll:
-            return
-        self.post_message(self.Scrolled(self.id or "", self.scroll_x, new_value))
-
-    def watch_scroll_x(self, old_value: float, new_value: float) -> None:
-        if self._suppress_scroll_events or not self.is_mounted or not self._primary_scroll:
-            return
-        self.post_message(self.Scrolled(self.id or "", new_value, self.scroll_y))
-
     def on_mouse_scroll_up(self, event: MouseScrollUp) -> None:
         self.post_message(self.WheelScrolled(self.id or "", -1))
         event.stop()
@@ -91,6 +62,39 @@ class ConflictMergePane(TextArea):
     def on_mouse_scroll_down(self, event: MouseScrollDown) -> None:
         self.post_message(self.WheelScrolled(self.id or "", 1))
         event.stop()
+
+
+class ConflictSharedScroll(VerticalScroll):
+    """Single shared vertical scrollbar for the three-pane merge view."""
+
+    DEFAULT_CSS = """
+    ConflictSharedScroll {
+        width: 2;
+        min-width: 2;
+        height: 1fr;
+        background: #0d1117;
+    }
+    """
+
+    class Scrolled(Message):
+        """Shared scrollbar moved to a new vertical offset."""
+
+        def __init__(self, scroll_y: float) -> None:
+            super().__init__()
+            self.scroll_y = scroll_y
+
+    def compose(self) -> ComposeResult:
+        yield Static(" ", id="conflict-shared-scroll-spacer")
+
+    def set_line_count(self, line_count: int) -> None:
+        """Resize the spacer so the shared scrollbar has the right range."""
+        spacer = self.query_one("#conflict-shared-scroll-spacer", Static)
+        spacer.update("\n".join(" " for _ in range(max(1, line_count))))
+
+    def watch_scroll_y(self, old_value: float, new_value: float) -> None:
+        if round(old_value) == round(new_value) or not self.is_mounted:
+            return
+        self.post_message(self.Scrolled(new_value))
 
 
 class _ConflictDismissMixin:
@@ -204,6 +208,11 @@ class GitConflictResolverView(Vertical):
     #conflict-merge-row {
         height: 1fr;
         border-top: solid #21262d;
+    }
+
+    #conflict-merge-panes {
+        width: 1fr;
+        height: 1fr;
     }
 
     .conflict-merge-pane {
@@ -338,13 +347,11 @@ class GitConflictResolverView(Vertical):
                     yield Label("Result", id="conflict-result-title", classes="conflict-pane-title")
                     yield Label("Theirs", id="conflict-theirs-title", classes="conflict-pane-title")
                 with Horizontal(id="conflict-merge-row"):
-                    yield ConflictMergePane(view_id="conflict-ours-pane", read_only=True)
-                    yield ConflictMergePane(
-                        view_id="conflict-result-pane",
-                        read_only=False,
-                        primary_scroll=True,
-                    )
-                    yield ConflictMergePane(view_id="conflict-theirs-pane", read_only=True)
+                    with Horizontal(id="conflict-merge-panes"):
+                        yield ConflictMergePane(view_id="conflict-ours-pane", read_only=True)
+                        yield ConflictMergePane(view_id="conflict-result-pane", read_only=False)
+                        yield ConflictMergePane(view_id="conflict-theirs-pane", read_only=True)
+                    yield ConflictSharedScroll(id="conflict-shared-scroll")
                 with Horizontal(id="conflict-action-row"):
                     yield Button("Prev Block", id="conflict-prev")
                     yield Button("Next Block", id="conflict-next")
@@ -416,6 +423,7 @@ class GitConflictResolverView(Vertical):
         ours_pane = self.query_one("#conflict-ours-pane", ConflictMergePane)
         result_pane = self.query_one("#conflict-result-pane", ConflictMergePane)
         theirs_pane = self.query_one("#conflict-theirs-pane", ConflictMergePane)
+        shared_scroll = self.query_one("#conflict-shared-scroll", ConflictSharedScroll)
         blocks = self.query_one("#conflict-blocks", OptionList)
 
         conflict_file = self._current_file()
@@ -428,6 +436,7 @@ class GitConflictResolverView(Vertical):
             ours_pane.set_content(resolved_path, "All current conflict markers are resolved.")
             result_pane.set_content(resolved_path, "")
             theirs_pane.set_content(resolved_path, "")
+            shared_scroll.set_line_count(1)
             self._set_block_buttons_enabled(False)
             blocks.clear_options()
             return
@@ -453,6 +462,7 @@ class GitConflictResolverView(Vertical):
                 ours_pane.set_content(file_path, conflict_file.ours_full_text)
                 result_pane.set_content(file_path, current_text)
                 theirs_pane.set_content(file_path, conflict_file.theirs_full_text)
+                shared_scroll.set_line_count(self._max_line_count(conflict_file, current_text))
                 self._loaded_block_key = None
                 self._set_block_buttons_enabled(False)
                 return
@@ -465,6 +475,7 @@ class GitConflictResolverView(Vertical):
         theirs_title.update(f"Theirs [{theirs_label}]")
         ours_pane.set_content(file_path, conflict_file.ours_full_text)
         theirs_pane.set_content(file_path, conflict_file.theirs_full_text)
+        shared_scroll.set_line_count(self._max_line_count(conflict_file, current_text))
         status.update(
             f"{conflict_file.filepath}  Block {block.index + 1} of {len(conflict_file.blocks)}"
             f"  lines {block.start_line}-{block.end_line}"
@@ -501,15 +512,32 @@ class GitConflictResolverView(Vertical):
             not enabled or total == 0 or self._selected_block >= total - 1
         )
 
+    def _max_line_count(self, conflict_file, result_text: str) -> int:
+        """Return max line count across the three panes."""
+        return max(
+            1,
+            len(conflict_file.ours_full_text.splitlines()) or 1,
+            len(result_text.splitlines()) or 1,
+            len(conflict_file.theirs_full_text.splitlines()) or 1,
+        )
+
+    def _set_pane_scroll(self, scroll_y: float) -> None:
+        """Apply one shared vertical offset to all three panes."""
+        ours_pane = self.query_one("#conflict-ours-pane", ConflictMergePane)
+        result_pane = self.query_one("#conflict-result-pane", ConflictMergePane)
+        theirs_pane = self.query_one("#conflict-theirs-pane", ConflictMergePane)
+        for pane in (ours_pane, result_pane, theirs_pane):
+            pane.scroll_to(y=max(0, scroll_y), animate=False, force=True)
+
     def _align_merge_panes(self, *, result_line: int, ours_line: int, theirs_line: int) -> None:
         """Align the three full-file panes near the selected conflict block."""
+        shared_scroll = self.query_one("#conflict-shared-scroll", ConflictSharedScroll)
         ours_pane = self.query_one("#conflict-ours-pane", ConflictMergePane)
         result_pane = self.query_one("#conflict-result-pane", ConflictMergePane)
         theirs_pane = self.query_one("#conflict-theirs-pane", ConflictMergePane)
         shared_scroll_y = max(0, result_line - 3)
-        ours_pane.sync_scroll(0, shared_scroll_y)
-        result_pane.sync_scroll(0, shared_scroll_y)
-        theirs_pane.sync_scroll(0, shared_scroll_y)
+        shared_scroll.scroll_to(y=shared_scroll_y, animate=False, force=True)
+        self._set_pane_scroll(shared_scroll_y)
         try:
             ours_pane.cursor_location = (max(0, ours_line - 1), 0)
             result_pane.cursor_location = (max(0, result_line - 1), 0)
@@ -542,28 +570,24 @@ class GitConflictResolverView(Vertical):
             + current_text[current_block.end_offset :]
         )
 
-    def on_conflict_merge_pane_scrolled(self, event: ConflictMergePane.Scrolled) -> None:
-        """Mirror result-pane scrolling across the other merge panes."""
+    def on_conflict_shared_scroll_scrolled(self, event: ConflictSharedScroll.Scrolled) -> None:
+        """Mirror shared scrollbar movement across the three merge panes."""
         if self._syncing_scroll:
             return
         self._syncing_scroll = True
         try:
-            if event.view_id != "conflict-result-pane":
-                return
-            for pane_id in ("#conflict-ours-pane", "#conflict-theirs-pane"):
-                pane = self.query_one(pane_id, ConflictMergePane)
-                pane.sync_scroll(event.scroll_x, event.scroll_y)
+            self._set_pane_scroll(event.scroll_y)
         finally:
             self._syncing_scroll = False
 
     def on_conflict_merge_pane_wheel_scrolled(self, event: ConflictMergePane.WheelScrolled) -> None:
         """Route all wheel scrolling through the shared result pane."""
         event.stop()
-        result_pane = self.query_one("#conflict-result-pane", ConflictMergePane)
+        shared_scroll = self.query_one("#conflict-shared-scroll", ConflictSharedScroll)
         if event.direction < 0:
-            result_pane.scroll_up(animate=False)
+            shared_scroll.scroll_up(animate=False)
         else:
-            result_pane.scroll_down(animate=False)
+            shared_scroll.scroll_down(animate=False)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         option_id = event.option_id or ""
