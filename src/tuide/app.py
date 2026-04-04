@@ -641,6 +641,7 @@ class TuideApp(App[None]):
             lsp=self.lsp_service.status_label(),
         )
         self._cached_branch: str = "—"
+        self._workspace_hidden_for_git_log = False
 
     def compose(self) -> ComposeResult:
         """Compose the app shell."""
@@ -2003,6 +2004,12 @@ class TuideApp(App[None]):
         if not entries:
             self.notify("No commits found in this repository", severity="warning")
             return
+        workspace_panel = self.query_one("#workspace-panel")
+        if workspace_panel.display:
+            workspace_panel.display = False
+            self.sync_splitter_visibility()
+            self.refresh_status()
+            self._workspace_hidden_for_git_log = True
         view = GitHistoryBrowserView(
             branch=branch,
             entries=entries,
@@ -2135,6 +2142,13 @@ class TuideApp(App[None]):
         event: EditorPanel.VirtualTabClosed,
     ) -> None:
         """When Git Conflicts closes, clean up the rest of the transient update tabs."""
+        if event.title == "Git Log" and self._workspace_hidden_for_git_log:
+            workspace_panel = self.query_one("#workspace-panel")
+            if not workspace_panel.display:
+                workspace_panel.display = True
+                self.sync_splitter_visibility()
+                self.refresh_status()
+            self._workspace_hidden_for_git_log = False
         if event.title != "Git Conflicts":
             return
         await self._close_git_update_tabs()
