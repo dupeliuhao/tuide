@@ -118,10 +118,14 @@ class TerminalPanel(Vertical):
         tabs = self._tabs
         await tabs.add_pane(pane)
         tabs.active = pane_id
+        tabs.refresh(layout=True)
+        self.refresh(layout=True)
         if is_real:
             self._terminal_widgets[pane_id] = widget
 
             def _start_and_focus() -> None:
+                self.refresh(layout=True)
+                tabs.refresh(layout=True)
                 widget.start()
                 widget.focus()
 

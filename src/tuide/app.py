@@ -1153,6 +1153,9 @@ class TuideApp(App[None]):
             # Editor restored — return terminal to its saved width
             terminal.styles.width = self.terminal_width
         self.sync_splitter_visibility()
+        terminal.refresh(layout=True)
+        self.query_one("#main-layout").refresh(layout=True)
+        self.refresh(layout=True)
         self.refresh_status()
 
     def action_toggle_terminal(self) -> None:
