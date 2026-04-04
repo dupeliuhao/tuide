@@ -633,7 +633,7 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
         width: 70;
         height: auto;
         max-height: 22;
-        border: solid #8a5a16;
+        border: solid #388bfd;
         background: #161b22;
         margin-bottom: 1;
         margin-right: 0;
@@ -641,7 +641,7 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
     }
 
     #refs-title {
-        color: #f2cf86;
+        color: #79c0ff;
         height: 1;
         padding: 0 1;
         background: #0d1117;
@@ -748,7 +748,7 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[tuple[str, bool] | None]):
     }
 
     #file-list > ListItem.--highlight {
-        background: #4b3614;
+        background: #1f2d3d;
     }
 
     #file-list > ListItem:hover {

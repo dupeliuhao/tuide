@@ -93,7 +93,7 @@ class ShortcutBar(Widget):
                 x += len(sep)
             first = False
             hovered = self._hovered == idx
-            key_style = "bold #fff7e6 on #8a5a16" if hovered else "bold #f2cf86 on #35250f"
+            key_style = "bold #fff7e6 on #8a5a16" if hovered else "bold #cae8ff on #1a3a6b"
             desc_style = "#fff1c2" if hovered else "#8b949e"
             start = x
             key_part = f" {_fmt_shortcut_key(binding.key)} "
@@ -182,8 +182,8 @@ class TuideApp(App[None]):
 
     .menu-button.-active,
     .menu-button:focus {
-        background: #4b3614;
-        color: #fff1c2;
+        background: #21262d;
+        color: #e6edf3;
     }
 
     #main-layout {
@@ -322,7 +322,7 @@ class TuideApp(App[None]):
 
     GitLogView ListItem.--highlight,
     GitChangedFilesView ListItem.--highlight {
-        background: #4b3614;
+        background: #1f2d3d;
     }
 
     /* Transparent so the ListItem background (hover/highlight) shows through */
@@ -466,12 +466,12 @@ class TuideApp(App[None]):
     }
 
     DirectoryTree .tree--cursor {
-        background: #4b3614;
-        color: #fff1c2;
+        background: #1f2d3d;
+        color: #e6edf3;
     }
 
     DirectoryTree .tree--highlight {
-        background: #2a2114;
+        background: #21262d;
     }
 
     DirectoryTree .tree--guides {
@@ -509,8 +509,8 @@ class TuideApp(App[None]):
         min-height: 1;
         padding: 0 1;
         border: none;
-        background: #35250f;
-        color: #d9b56d;
+        background: #1f2d3d;
+        color: #8b949e;
     }
 
     #toggle-workspace-btn:hover,
@@ -526,8 +526,8 @@ class TuideApp(App[None]):
         min-height: 1;
         padding: 0 1;
         border: none;
-        background: #35250f;
-        color: #f2cf86;
+        background: #1f2d3d;
+        color: #79c0ff;
     }
 
     #branch-indicator:hover {
