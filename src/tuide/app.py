@@ -321,6 +321,13 @@ class TuideApp(App[None]):
         background: #2a2114;
     }
 
+    GitLogView ListItem:hover,
+    GitChangedFilesView ListItem:hover,
+    GitLogView ListItem:hover.--highlight,
+    GitChangedFilesView ListItem:hover.--highlight {
+        background: #8a5a16;
+    }
+
     GitLogView ListItem.--highlight,
     GitChangedFilesView ListItem.--highlight {
         background: #1f2d3d;
