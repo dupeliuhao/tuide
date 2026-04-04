@@ -386,6 +386,7 @@ class EditorPanel(Vertical):
         self.documents: dict[str, OpenDocument] = {}
         self._virtual_tab_labels: dict[str, str] = {}
         self._current_pane: str = ""
+        self._pane_history: list[str] = []
 
     def compose(self) -> ComposeResult:
         yield WrappingTabBar(id="editor-tab-bar")
@@ -403,6 +404,27 @@ class EditorPanel(Vertical):
         for child in container.children:
             child.display = child.id == pane_id
         self._current_pane = pane_id
+        self._record_pane_visit(pane_id)
+
+    def _record_pane_visit(self, pane_id: str) -> None:
+        """Track most recently visited panes so tab close returns to the right place."""
+        if not pane_id:
+            return
+        self._pane_history = [existing for existing in self._pane_history if existing != pane_id]
+        self._pane_history.append(pane_id)
+
+    def _activate_previous_pane(self) -> None:
+        """Switch to the most recently visited remaining pane."""
+        content_area = self.query_one("#editor-content")
+        existing_ids = [child.id for child in content_area.children if child.id]
+        for pane_id in reversed(self._pane_history):
+            if pane_id in existing_ids:
+                self._show_pane(pane_id)
+                return
+        if existing_ids:
+            self._show_pane(existing_ids[0])
+        else:
+            self._current_pane = ""
 
     @property
     def tab_bar(self) -> WrappingTabBar:
@@ -599,16 +621,14 @@ class EditorPanel(Vertical):
             return None
         doc = self.documents.pop(active_id, None)
         self._virtual_tab_labels.pop(active_id, None)
+        self._pane_history = [pane_id for pane_id in self._pane_history if pane_id != active_id]
         content_area = self.query_one("#editor-content")
         try:
             child = content_area.query_one(f"#{active_id}")
             await child.remove()
         except Exception:
             pass
-        if content_area.children:
-            self._show_pane(content_area.children[0].id)
-        else:
-            self._current_pane = ""
+        self._activate_previous_pane()
         self._sync_tab_bar()
         return doc.path if doc else None
 
@@ -723,6 +743,7 @@ class EditorPanel(Vertical):
     async def _close_pane_by_id(self, pane_id: str) -> None:
         self.documents.pop(pane_id, None)
         virtual_title = self._virtual_tab_labels.pop(pane_id, None)
+        self._pane_history = [visited for visited in self._pane_history if visited != pane_id]
         content_area = self.query_one("#editor-content")
         was_active = self._current_pane == pane_id
         try:
@@ -731,10 +752,7 @@ class EditorPanel(Vertical):
         except Exception:
             pass
         if was_active:
-            if content_area.children:
-                self._show_pane(content_area.children[0].id)
-            else:
-                self._current_pane = ""
+            self._activate_previous_pane()
         self._sync_tab_bar()
         if virtual_title is not None:
             self.post_message(self.VirtualTabClosed(pane_id, virtual_title))
