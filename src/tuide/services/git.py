@@ -624,6 +624,15 @@ class GitService:
 
         return self._run_with_error(repo_root, ["add", "--", filepath])
 
+    def write_worktree_file(self, repo_root: Path, filepath: str, text: str) -> tuple[bool, str]:
+        """Write resolved text into the working tree without staging it."""
+        full_path = repo_root / filepath
+        try:
+            full_path.write_text(text, encoding="utf-8")
+        except OSError as error:
+            return False, str(error)
+        return True, f"Updated {filepath} in the working tree."
+
     def apply_conflict_choice(
         self, repo_root: Path, filepath: str, block_index: int, choice: str
     ) -> tuple[bool, str]:

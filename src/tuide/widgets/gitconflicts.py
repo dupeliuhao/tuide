@@ -14,6 +14,7 @@ from textual.widgets import Button, Label, OptionList, Static, TextArea
 from textual.widgets.option_list import Option
 
 from tuide.models import GitConflictState
+from tuide.services.git import GitService
 from tuide.widgets.editor import _apply_language, build_editor_theme, detect_language
 
 
@@ -235,7 +236,7 @@ class GitConflictResolverView(Vertical):
     """
 
     class ApplyEditedResult(Message):
-        """Apply custom edited resolution text to the selected block."""
+        """Write the edited result file back to the working tree."""
 
         def __init__(self, repo_root: Path, filepath: str, block_index: int, text: str) -> None:
             super().__init__()
@@ -290,6 +291,7 @@ class GitConflictResolverView(Vertical):
         self._selected_block = 0
         self._loaded_block_key: tuple[int, int] | None = None
         self._syncing_scroll = False
+        self._git_service = GitService()
 
     def set_state(self, state: GitConflictState, repo_root: Path) -> None:
         """Refresh the resolver with new conflict state."""
@@ -336,7 +338,7 @@ class GitConflictResolverView(Vertical):
                     yield Button("Use Ours", id="conflict-ours", variant="primary")
                     yield Button("Use Theirs", id="conflict-theirs")
                     yield Button("Use Both", id="conflict-both")
-                    yield Button("Apply Block", id="conflict-apply-edited", variant="success")
+                    yield Button("Apply Result File", id="conflict-apply-edited", variant="success")
                     yield Button("Open Full File", id="conflict-edit")
                     yield Button("Mark Resolved", id="conflict-mark", variant="success")
                 with Horizontal(id="conflict-flow-row"):
@@ -419,6 +421,8 @@ class GitConflictResolverView(Vertical):
 
         blocks.clear_options()
         blocks.add_options(self._block_options())
+        file_path = self._repo_root / conflict_file.filepath
+        current_text = self._read_worktree_text(file_path)
 
         block = self._current_block()
         if block is None:
@@ -430,19 +434,12 @@ class GitConflictResolverView(Vertical):
                     f"{conflict_file.filepath}  No inline conflict markers detected. "
                     "Use full-file editing, then Mark Resolved."
                 )
-                file_path = self._repo_root / conflict_file.filepath
                 ours_title.update("Ours")
                 result_title.update("Result")
                 theirs_title.update("Theirs")
-                ours_pane.set_content(
-                    file_path,
-                    "This file is still marked conflicted by Git, but tuide could not parse inline markers.",
-                )
-                result_pane.set_content(file_path, "")
-                theirs_pane.set_content(
-                    file_path,
-                    "Open the full file, make the final contents you want, then choose Mark Resolved.",
-                )
+                ours_pane.set_content(file_path, conflict_file.ours_full_text)
+                result_pane.set_content(file_path, current_text)
+                theirs_pane.set_content(file_path, conflict_file.theirs_full_text)
                 self._loaded_block_key = None
                 self._set_block_buttons_enabled(False)
                 return
@@ -450,23 +447,26 @@ class GitConflictResolverView(Vertical):
         blocks.highlighted = self._selected_block
         ours_label = block.ours_label or "Current"
         theirs_label = block.theirs_label or "Incoming"
-        file_path = self._repo_root / conflict_file.filepath
         ours_title.update(f"Ours [{ours_label}]")
         result_title.update("Result")
         theirs_title.update(f"Theirs [{theirs_label}]")
-        ours_pane.set_content(file_path, block.ours_text)
-        theirs_pane.set_content(file_path, block.theirs_text)
+        ours_pane.set_content(file_path, conflict_file.ours_full_text)
+        theirs_pane.set_content(file_path, conflict_file.theirs_full_text)
         status.update(
             f"{conflict_file.filepath}  Block {block.index + 1} of {len(conflict_file.blocks)}"
             f"  lines {block.start_line}-{block.end_line}"
-            "  Edit the middle Result pane, then apply this block."
+            "  Edit the middle Result pane, then apply the updated file."
         )
 
         current_key = (self._selected_file, self._selected_block)
         if self._loaded_block_key != current_key:
-            result_pane.set_content(file_path, block.ours_text)
+            result_pane.set_content(file_path, current_text)
             self._loaded_block_key = current_key
-        self._align_merge_panes()
+        self._align_merge_panes(
+            result_line=max(1, block.start_line),
+            ours_line=max(1, block.ours_start_line),
+            theirs_line=max(1, block.theirs_start_line),
+        )
 
         self._set_block_buttons_enabled(True)
 
@@ -488,13 +488,45 @@ class GitConflictResolverView(Vertical):
             not enabled or total == 0 or self._selected_block >= total - 1
         )
 
-    def _align_merge_panes(self) -> None:
-        """Keep the three block panes aligned to the same scroll position."""
+    def _align_merge_panes(self, *, result_line: int, ours_line: int, theirs_line: int) -> None:
+        """Align the three full-file panes near the selected conflict block."""
         ours_pane = self.query_one("#conflict-ours-pane", ConflictMergePane)
         result_pane = self.query_one("#conflict-result-pane", ConflictMergePane)
         theirs_pane = self.query_one("#conflict-theirs-pane", ConflictMergePane)
-        for pane in (ours_pane, result_pane, theirs_pane):
-            pane.sync_scroll(0, 0)
+        ours_pane.sync_scroll(0, max(0, ours_line - 3))
+        result_pane.sync_scroll(0, max(0, result_line - 3))
+        theirs_pane.sync_scroll(0, max(0, theirs_line - 3))
+        try:
+            ours_pane.cursor_location = (max(0, ours_line - 1), 0)
+            result_pane.cursor_location = (max(0, result_line - 1), 0)
+            theirs_pane.cursor_location = (max(0, theirs_line - 1), 0)
+        except Exception:
+            pass
+
+    def _read_worktree_text(self, path: Path) -> str:
+        """Read the current working-tree text for the selected conflicted file."""
+        try:
+            return path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+
+    def _replace_selected_block_text(self, replacement: str) -> str | None:
+        """Return full result text with the selected conflict block replaced."""
+        conflict_file = self._current_file()
+        block = self._current_block()
+        if conflict_file is None or block is None:
+            return None
+        result_pane = self.query_one("#conflict-result-pane", ConflictMergePane)
+        current_text = result_pane.text
+        blocks = self._git_service.parse_conflict_blocks(current_text)
+        if block.index >= len(blocks):
+            return None
+        current_block = blocks[block.index]
+        return (
+            current_text[: current_block.start_offset]
+            + replacement
+            + current_text[current_block.end_offset :]
+        )
 
     def on_conflict_merge_pane_scrolled(self, event: ConflictMergePane.Scrolled) -> None:
         """Mirror scrolling across all three merge panes."""
@@ -560,17 +592,23 @@ class GitConflictResolverView(Vertical):
         result_pane = self.query_one("#conflict-result-pane", ConflictMergePane)
 
         if button_id == "conflict-ours":
-            result_pane.load_text(block.ours_text)
+            replaced = self._replace_selected_block_text(block.ours_text)
+            if replaced is not None:
+                result_pane.load_text(replaced)
             return
         if button_id == "conflict-theirs":
-            result_pane.load_text(block.theirs_text)
+            replaced = self._replace_selected_block_text(block.theirs_text)
+            if replaced is not None:
+                result_pane.load_text(replaced)
             return
         if button_id == "conflict-both":
             combined = block.ours_text
             if block.ours_text and block.theirs_text and not block.ours_text.endswith("\n"):
                 combined += "\n"
             combined += block.theirs_text
-            result_pane.load_text(combined)
+            replaced = self._replace_selected_block_text(combined)
+            if replaced is not None:
+                result_pane.load_text(replaced)
             return
         if button_id == "conflict-apply-edited":
             self.post_message(

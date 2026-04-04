@@ -1867,12 +1867,11 @@ class TuideApp(App[None]):
         self,
         event: GitConflictResolverView.ApplyEditedResult,
     ) -> None:
-        """Apply edited resolution text to the selected conflict block."""
+        """Write the edited result pane back to the conflicted file."""
         success, output = await asyncio.to_thread(
-            self.git_service.apply_conflict_resolution_text,
+            self.git_service.write_worktree_file,
             event.repo_root,
             event.filepath,
-            event.block_index,
             event.text,
         )
         if not success:
