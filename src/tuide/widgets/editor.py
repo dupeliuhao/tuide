@@ -9,12 +9,12 @@ from rich.style import Style
 from rich.text import Text
 from textual import events, on
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.geometry import Size
 from textual.message import Message
 from textual.widget import Widget
-from textual.widgets import Label, Static, TextArea
-from textual.widgets.text_area import TextAreaTheme
+from textual.widgets import Input, Label, Static, TextArea
+from textual.widgets.text_area import Selection, TextAreaTheme
 
 from tuide.models import OpenDocument
 from tuide.widgets.diffview import DiffView
@@ -364,6 +364,65 @@ def build_code_editor(text: str, path: Path, pane_id: str) -> TextArea:
 
 
 # ---------------------------------------------------------------------------
+# FindBar — inline search bar shown above editor content
+# ---------------------------------------------------------------------------
+
+class FindBar(Horizontal):
+    """Narrow find bar shown at the top of the editor content area."""
+
+    DEFAULT_CSS = """
+    FindBar {
+        height: 0;
+        background: #161b22;
+        padding: 0 1;
+        overflow: hidden;
+    }
+    FindBar Input {
+        height: 1;
+        border: none;
+        background: #21262d;
+        color: #e6edf3;
+        width: 30;
+        padding: 0 1;
+    }
+    FindBar #find-count {
+        width: auto;
+        padding: 0 1;
+        color: #8b949e;
+        height: 1;
+    }
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.is_open = False
+
+    def compose(self) -> ComposeResult:
+        yield Input(placeholder="find…", id="find-input")
+        yield Label("", id="find-count")
+
+    def open(self) -> None:
+        self.is_open = True
+        self.styles.height = 1
+        self.query_one("#find-input", Input).focus()
+
+    def close(self) -> None:
+        self.is_open = False
+        self.styles.height = 0
+        self.query_one("#find-input", Input).value = ""
+        self.query_one("#find-count", Label).update("")
+
+    def update_count(self, current: int, total: int, has_query: bool) -> None:
+        label = self.query_one("#find-count", Label)
+        if not has_query:
+            label.update("")
+        elif total == 0:
+            label.update("no matches")
+        else:
+            label.update(f"{current + 1}/{total}")
+
+
+# ---------------------------------------------------------------------------
 # EditorPanel — plain Vertical + manual display toggling + WrappingTabBar
 # ---------------------------------------------------------------------------
 
@@ -387,9 +446,13 @@ class EditorPanel(Vertical):
         self._virtual_tab_labels: dict[str, str] = {}
         self._current_pane: str = ""
         self._pane_history: list[str] = []
+        self._find_matches: list[tuple[int, int]] = []
+        self._find_idx: int = 0
+        self._find_query: str = ""
 
     def compose(self) -> ComposeResult:
         yield WrappingTabBar(id="editor-tab-bar")
+        yield FindBar(id="find-bar")
         yield Vertical(id="editor-content")
 
     def on_mount(self) -> None:
@@ -514,6 +577,71 @@ class EditorPanel(Vertical):
                 continue
             matches.append(f"{path}:{line_number}: {line.strip()}")
         return matches
+
+    # ------------------------------------------------------------------
+    # Inline find bar
+
+    def open_find_bar(self) -> None:
+        """Show the inline find bar and focus its input."""
+        self.query_one(FindBar).open()
+
+    def _compute_find_matches(self, text: str, query: str) -> list[tuple[int, int]]:
+        if not query:
+            return []
+        matches: list[tuple[int, int]] = []
+        for row, line in enumerate(text.splitlines()):
+            col = 0
+            while True:
+                idx = line.find(query, col)
+                if idx == -1:
+                    break
+                matches.append((row, idx))
+                col = idx + 1
+        return matches
+
+    def _jump_to_find_match(self) -> None:
+        if not self._find_matches:
+            return
+        ta = self.active_text_area
+        if ta is None:
+            return
+        row, col = self._find_matches[self._find_idx]
+        ta.selection = Selection((row, col), (row, col + len(self._find_query)))
+        ta.scroll_cursor_visible()
+
+    @on(Input.Changed, "#find-input")
+    def _on_find_input_changed(self, event: Input.Changed) -> None:
+        self._find_query = event.value
+        ta = self.active_text_area
+        self._find_matches = self._compute_find_matches(ta.text if ta is not None else "", self._find_query)
+        self._find_idx = 0
+        self.query_one(FindBar).update_count(self._find_idx, len(self._find_matches), bool(self._find_query))
+        self._jump_to_find_match()
+
+    @on(Input.Submitted, "#find-input")
+    def _on_find_submitted(self, event: Input.Submitted) -> None:
+        if self._find_matches:
+            self._find_idx = (self._find_idx + 1) % len(self._find_matches)
+            self.query_one(FindBar).update_count(self._find_idx, len(self._find_matches), bool(self._find_query))
+            self._jump_to_find_match()
+
+    def on_key(self, event: events.Key) -> None:
+        find_bar = self.query_one(FindBar)
+        if not find_bar.is_open:
+            return
+        if event.key == "escape":
+            event.stop()
+            find_bar.close()
+            self._find_matches = []
+            ta = self.active_text_area
+            if ta is not None:
+                ta.focus()
+        elif event.key == "shift+enter":
+            event.stop()
+            if self._find_matches:
+                self._find_idx = (self._find_idx - 1) % len(self._find_matches)
+                find_bar.update_count(self._find_idx, len(self._find_matches), bool(self._find_query))
+                self._jump_to_find_match()
 
     @property
     def dirty_documents(self) -> list[OpenDocument]:

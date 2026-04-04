@@ -71,7 +71,7 @@ Status key:
 
 - `done` repo root detection
 - `partial` diff with branch
-  Opens a side-by-side read-only diff tab, but without synchronized scrolling or line-aware highlighting.
+  Opens a side-by-side read-only diff tab, but without line-aware highlighting.
 - `partial` file history
   Uses a commit picker and opens a side-by-side diff tab for the selected commit.
 - `partial` blame
@@ -100,8 +100,8 @@ Status key:
 ## Phase 8: Final polish and hardening
 
 - `partial` config persistence for panel sizes and default workspace
-- `todo` theme and keybinding override persistence
-- `todo` clickable status bar actions
+- `partial` theme and keybinding override persistence
+- `done` clickable status bar actions
 - `todo` cross-platform docs beyond Linux-first testing
 - `todo` contributor architecture guide
 - `todo` comprehensive test matrix and release gates

@@ -1453,18 +1453,8 @@ class TuideApp(App[None]):
         await self._open_editor_file(todo_path)
 
     async def action_find_in_file(self) -> None:
-        """Search for text in the active file and open a results tab."""
-        query = await self.wait_for_screen_result(
-            PromptDialog("Find in file", placeholder="search text")
-        )
-        if not query:
-            return
-
-        matches = self.query_one(EditorPanel).find_in_active_file(query)
-        title = f"find:{query}"
-        text = "\n".join(matches) if matches else "No matches in active file."
-        await self.query_one(EditorPanel).open_result_tab(title, text)
-        self.refresh_status()
+        """Open the inline find bar in the active editor."""
+        self.query_one(EditorPanel).open_find_bar()
 
     async def action_find_in_workspace(self) -> None:
         """Search for text across workspace roots."""
