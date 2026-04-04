@@ -375,10 +375,12 @@ class FindBar(Horizontal):
         height: 0;
         background: #161b22;
         padding: 0 1;
+        align: left middle;
+        border-bottom: solid #21262d;
         overflow: hidden;
     }
     FindBar Input {
-        height: 1;
+        height: 3;
         border: none;
         background: #21262d;
         color: #e6edf3;
@@ -389,7 +391,8 @@ class FindBar(Horizontal):
         width: auto;
         padding: 0 1;
         color: #8b949e;
-        height: 1;
+        height: 3;
+        content-align: left middle;
     }
     """
 
@@ -403,7 +406,7 @@ class FindBar(Horizontal):
 
     def open(self) -> None:
         self.is_open = True
-        self.styles.height = 1
+        self.styles.height = 3
         self.query_one("#find-input", Input).focus()
 
     def close(self) -> None:
