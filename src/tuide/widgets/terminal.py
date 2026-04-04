@@ -9,6 +9,7 @@ from pathlib import Path
 
 from textual import events, on
 from textual.containers import Vertical
+from textual.message import Message
 from textual.widgets import Button, Static, Tab, TabPane, TabbedContent
 
 
@@ -52,6 +53,9 @@ class TerminalPanel(Vertical):
 
     DEFAULT_CLASSES = "panel-frame"
     can_focus = True
+
+    class HideRequested(Message):
+        """Request that the owning app hide the terminal panel."""
 
     def __init__(self, shell_hint: str) -> None:
         super().__init__(id="terminal-panel")
@@ -146,6 +150,7 @@ class TerminalPanel(Vertical):
         """Close the active terminal tab. Returns False if it's the last one."""
         tabs = self._tabs
         if tabs.tab_count <= 1:
+            self.post_message(self.HideRequested())
             return False
         active_id = tabs.active
         widget = self._terminal_widgets.pop(active_id, None)
@@ -191,6 +196,7 @@ class TerminalPanel(Vertical):
         """Terminate and remove a specific terminal pane."""
         tabs = self._tabs
         if tabs.tab_count <= 1:
+            self.post_message(self.HideRequested())
             return
         widget = self._terminal_widgets.pop(pane_id, None)
         if widget is not None:

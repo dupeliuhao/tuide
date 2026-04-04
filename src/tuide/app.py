@@ -1051,7 +1051,7 @@ class TuideApp(App[None]):
                         # × occupies the last 2 columns of the tab (right padding is 1)
                         if sx >= r.right - 2:
                             terminal._tabs.active = pane_id
-                            self.run_worker(terminal.close_active_tab(), exclusive=False)
+                            self.run_worker(self._close_terminal_tab(), exclusive=False)
                         break
             except Exception:
                 pass
@@ -1246,7 +1246,17 @@ class TuideApp(App[None]):
     async def _close_terminal_tab(self) -> None:
         closed = await self.query_one(TerminalPanel).close_active_tab()
         if not closed:
-            self.notify("Cannot close the last terminal tab", severity="warning")
+            return
+
+    @on(TerminalPanel.HideRequested)
+    def _on_terminal_hide_requested(self) -> None:
+        """Hide the terminal panel when its last tab is closed."""
+        panel = self.query_one("#terminal-panel")
+        if not panel.display:
+            return
+        panel.display = False
+        self.sync_splitter_visibility()
+        self.refresh_status()
 
     def action_escape_focus(self) -> None:
         """Return focus to the editor when no modal is active."""
