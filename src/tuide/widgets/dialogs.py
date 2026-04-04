@@ -209,7 +209,7 @@ class HelpDialog(EscapeDismissMixin, ModalScreen[None]):
         with NeutralFocusDialog(id="help-dialog"):
             yield Label("tuide keybindings", id="help-title")
             yield Label("Tab / Shift+Tab  cycle focus between panels", classes="help-line")
-            yield Label("Esc              return focus to the editor", classes="help-line")
+            yield Label("Esc              quit on main view / back out one layer in flows", classes="help-line")
             yield Label("Ctrl+Z           undo last edit", classes="help-line")
             yield Label("Ctrl+Shift+Z     redo last undone edit", classes="help-line")
             yield Label("Ctrl+W           close active tab", classes="help-line")

@@ -1265,7 +1265,7 @@ class TuideApp(App[None]):
         self.refresh_status()
 
     def action_escape_focus(self) -> None:
-        """Return focus to the editor when no modal is active."""
+        """Unwind UI layers, or open quit confirmation from the main shell."""
         if len(self.screen_stack) > 1:
             top_screen = self.screen_stack[-1]
             handle_escape = getattr(top_screen, "handle_escape", None)
@@ -1273,7 +1273,7 @@ class TuideApp(App[None]):
                 return
             top_screen.dismiss(None)
             return
-        self.query_one(EditorPanel).focus()
+        self.run_worker(self.action_request_quit(), exclusive=False)
 
     def action_show_help(self) -> None:
         """Show the keybinding help overlay."""
