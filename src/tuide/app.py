@@ -1265,7 +1265,11 @@ class TuideApp(App[None]):
     def action_escape_focus(self) -> None:
         """Return focus to the editor when no modal is active."""
         if len(self.screen_stack) > 1:
-            self.screen_stack[-1].dismiss(None)
+            top_screen = self.screen_stack[-1]
+            handle_escape = getattr(top_screen, "handle_escape", None)
+            if callable(handle_escape) and handle_escape():
+                return
+            top_screen.dismiss(None)
             return
         self.query_one(EditorPanel).focus()
 

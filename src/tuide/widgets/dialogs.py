@@ -1235,6 +1235,10 @@ class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
         background: #1f2d3d;
     }
 
+    #push-nav-list > ListItem.hovered {
+        background: #2a2114;
+    }
+
     #push-nav-list > ListItem:hover {
         background: #2a2114;
     }
@@ -1325,16 +1329,20 @@ class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
         """Use Escape as in-screen back before dismissing the push preview."""
         if event.key != "escape":
             return
+        if self.handle_escape():
+            event.stop()
+
+    def handle_escape(self) -> bool:
+        """Handle Escape locally and return whether it was consumed."""
         if self._mode == "files":
             self._show_commits()
             try:
                 self.query_one("#push-nav-list", ListView).focus()
             except Exception:
                 pass
-            event.stop()
-            return
+            return True
         self.dismiss(None)
-        event.stop()
+        return True
 
     def _show_commits(self) -> None:
         self._mode = "commits"
@@ -1451,6 +1459,29 @@ class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
             self._show_files_for_commit(event.list_view.index)
             return
         self._show_diff(event.list_view.index)
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        """Keep the whole hovered row highlighted, including two-line commit items."""
+        target: ListItem | None = None
+        try:
+            widget, _ = self.screen.get_widget_at(event.screen_x, event.screen_y)
+            node = widget
+            while node is not None:
+                if isinstance(node, ListItem) and node.parent is not None and node.parent.id == "push-nav-list":
+                    target = node
+                    break
+                node = node.parent
+        except Exception:
+            pass
+        for item in self.query("#push-nav-list > ListItem", ListItem):
+            if item is target:
+                item.add_class("hovered")
+            else:
+                item.remove_class("hovered")
+
+    def on_leave(self) -> None:
+        for item in self.query("#push-nav-list > ListItem", ListItem):
+            item.remove_class("hovered")
 
     @on(Button.Pressed, "#push-nav-back")
     def _on_back_to_commits(self) -> None:
