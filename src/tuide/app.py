@@ -545,6 +545,18 @@ class TuideApp(App[None]):
         color: #fff7e6;
         text-style: bold;
     }
+
+    .dismiss-button {
+        background: #21262d;
+        color: #ffffff;
+        border: none;
+    }
+
+    .dismiss-button:hover,
+    .dismiss-button:focus {
+        background: #8a5a16;
+        color: #fff7e6;
+    }
     """
 
     BINDINGS = [

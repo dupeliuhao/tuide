@@ -114,7 +114,7 @@ class ConfirmDialog(EscapeDismissMixin, ModalScreen[bool | None]):
             yield Label(self._message, id="confirm-message")
             yield Label("Esc or Back to return", id="confirm-hint")
             with Horizontal(id="confirm-actions"):
-                yield Button("Back", id="confirm-cancel")
+                yield Button("Back", id="confirm-cancel", classes="dismiss-button")
                 yield Button(self._confirm_label, variant="warning", id="confirm-ok")
 
     def on_mount(self) -> None:
@@ -197,7 +197,7 @@ class HelpDialog(EscapeDismissMixin, ModalScreen[None]):
             yield Label("Ctrl+J           toggle terminal panel", classes="help-line")
             yield Label("Ctrl+R           restart terminal", classes="help-line")
             yield Label("?                show this help", classes="help-line")
-            yield Button("Close", id="help-close")
+            yield Button("Close", id="help-close", classes="dismiss-button")
 
     def on_mount(self) -> None:
         """Focus the close button."""
@@ -276,7 +276,7 @@ class PromptDialog(EscapeDismissMixin, ModalScreen[str | None]):
             yield Input(value=self._value, placeholder=self._placeholder, id="prompt-input")
             yield Label("Enter to confirm, Esc or Back to return", id="prompt-hint")
             with Horizontal(id="prompt-actions"):
-                yield Button("Back", id="prompt-cancel")
+                yield Button("Back", id="prompt-cancel", classes="dismiss-button")
                 yield Button("OK", variant="success", id="prompt-ok")
 
     def on_mount(self) -> None:
@@ -356,7 +356,7 @@ class CommandPaletteDialog(EscapeDismissMixin, ModalScreen[str | None]):
             options = [Option(f"{item.label} — {item.description}", id=item.id) for item in self._commands]
             yield PointerTrackingOptionList(*options, id="palette-options")
             with Horizontal(id="palette-actions"):
-                yield Button("Back", id="palette-cancel")
+                yield Button("Back", id="palette-cancel", classes="dismiss-button")
 
     def on_mount(self) -> None:
         self.query_one("#palette-input", Input).focus()
@@ -468,7 +468,7 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
             options = [Option(self._format_option(item), id=item.id) for item in self._options]
             yield PointerTrackingOptionList(*options, id="picker-options")
             with Horizontal(id="picker-actions"):
-                yield Button("Back", id="picker-cancel")
+                yield Button("Back", id="picker-cancel", classes="dismiss-button")
 
     def on_mount(self) -> None:
         self.query_one("#picker-input", Input).focus()
@@ -821,11 +821,6 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[tuple[str, bool] | None]):
         margin-left: 1;
     }
 
-    #cancel-btn {
-        background: #21262d;
-        color: #8b949e;
-    }
-
     #discard-btn {
         background: #6e1a1a;
         color: #e5534b;
@@ -895,7 +890,7 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[tuple[str, bool] | None]):
                 yield Label("Commit message", id="message-label")
                 yield Input(placeholder="Enter commit message…", id="message-input")
             with Horizontal(id="commit-actions"):
-                yield Button("Cancel", id="cancel-btn")
+                yield Button("Cancel", id="cancel-btn", classes="dismiss-button")
                 yield Button("Discard File", id="discard-btn", disabled=True)
                 yield Button("Commit", id="do-commit-btn")
                 yield Button("Commit & Push", id="do-commit-push-btn")
