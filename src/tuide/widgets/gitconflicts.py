@@ -49,8 +49,8 @@ class ConflictCompareView(Vertical):
     }
     """
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *children, **kwargs) -> None:
+        super().__init__(*children, **kwargs)
         self._left_title = "Ours"
         self._right_title = "Theirs"
         self._left_text = ""
