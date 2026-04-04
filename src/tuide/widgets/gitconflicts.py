@@ -29,8 +29,8 @@ class ConflictViewer(Static):
             self.view_id = view_id
             self.direction = direction
 
-    def __init__(self, *, view_id: str) -> None:
-        super().__init__("", id=view_id)
+    def __init__(self, *, view_id: str, **kwargs) -> None:
+        super().__init__("", id=view_id, **kwargs)
         try:
             self._viewer = TextArea("", read_only=True, soft_wrap=False, tab_behavior="indent")
             self._viewer.register_theme(build_editor_theme())
