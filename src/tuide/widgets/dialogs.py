@@ -1155,7 +1155,7 @@ class _PushChangedFileItem(ListItem):
         yield Static(f"[bold {color}]{self.file_status}[/]  [#e6edf3]{label}[/]", markup=True)
 
 
-class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
+class GitPushScreen(ModalScreen[bool | None]):
     """Preview unpushed commits, changed files, and diffs before pushing."""
 
     BINDINGS = [
@@ -1296,7 +1296,6 @@ class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
         self.repo_root = repo_root
         self.git_service = git_service
         self._entries = entries
-        self._swallow_next_escape = False
         self._mode = "commits"
         self._current_commit_index: int | None = None
         self._current_file_index: int | None = None
@@ -1329,29 +1328,14 @@ class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
         except Exception:
             pass
 
-    def on_key(self, event: Key) -> None:
-        """Use Escape as in-screen back before dismissing the push preview."""
-        if event.key != "escape":
-            return
-        if self.handle_escape():
-            event.stop()
-
     def action_escape_preview(self) -> None:
         """Handle the screen-local Escape binding."""
         self.handle_escape()
 
-    def _clear_escape_swallow(self) -> None:
-        self._swallow_next_escape = False
-
     def handle_escape(self) -> bool:
         """Handle Escape locally and return whether it was consumed."""
-        if self._swallow_next_escape:
-            self._swallow_next_escape = False
-            return True
         if self._mode == "files":
             self._show_commits()
-            self._swallow_next_escape = True
-            self.call_after_refresh(self._clear_escape_swallow)
             try:
                 self.query_one("#push-nav-list", ListView).focus()
             except Exception:
