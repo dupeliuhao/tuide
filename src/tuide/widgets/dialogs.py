@@ -1296,6 +1296,7 @@ class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
         self.repo_root = repo_root
         self.git_service = git_service
         self._entries = entries
+        self._swallow_next_escape = False
         self._mode = "commits"
         self._current_commit_index: int | None = None
         self._current_file_index: int | None = None
@@ -1339,10 +1340,18 @@ class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
         """Handle the screen-local Escape binding."""
         self.handle_escape()
 
+    def _clear_escape_swallow(self) -> None:
+        self._swallow_next_escape = False
+
     def handle_escape(self) -> bool:
         """Handle Escape locally and return whether it was consumed."""
+        if self._swallow_next_escape:
+            self._swallow_next_escape = False
+            return True
         if self._mode == "files":
             self._show_commits()
+            self._swallow_next_escape = True
+            self.call_after_refresh(self._clear_escape_swallow)
             try:
                 self.query_one("#push-nav-list", ListView).focus()
             except Exception:
