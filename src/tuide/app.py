@@ -1085,6 +1085,7 @@ class TuideApp(App[None]):
 
         items += [
             ChoiceItem("ctx.git_diff", "Compare With Branch"),
+            ChoiceItem("ctx.git_diff_remote", "Compare With Remote"),
             ChoiceItem("ctx.git_history", "Git file history"),
             ChoiceItem("ctx.git_blame", "Git blame"),
             ChoiceItem("ctx.definition", "Go to definition"),
@@ -1115,10 +1116,11 @@ class TuideApp(App[None]):
                     await editor.open_readonly_tab(f"line-history:{path.name}:{start}-{end}", history)
                 else:
                     self.notify("No line history found", severity="warning")
-        elif action_id in {"ctx.git_diff", "ctx.git_history", "ctx.git_blame",
+        elif action_id in {"ctx.git_diff", "ctx.git_diff_remote", "ctx.git_history", "ctx.git_blame",
                            "ctx.definition", "ctx.references", "ctx.python_outline"}:
             mapping = {
                 "ctx.git_diff": "git.diff",
+                "ctx.git_diff_remote": "git.diff_remote",
                 "ctx.git_history": "git.history",
                 "ctx.git_blame": "git.blame",
                 "ctx.definition": "code.definition",
@@ -1283,6 +1285,7 @@ class TuideApp(App[None]):
             CommandItem("git.branch_history", "Git branch history", "Browse commits on the current branch"),
             CommandItem("git.session", "Git session", "Open project-level Git actions"),
             CommandItem("git.diff", "Compare With Branch", "Compare current file to another branch"),
+            CommandItem("git.diff_remote", "Compare With Remote", "Compare current file to the current branch upstream"),
             CommandItem("git.changed_files", "Git changed files", "Show side-by-side diff for any file changed vs HEAD"),
             CommandItem("git.history", "Git file history", "Show history for the active file"),
             CommandItem("git.blame", "Git blame", "Show blame for the active file"),
@@ -1335,6 +1338,7 @@ class TuideApp(App[None]):
                 ChoiceItem("file.close", "Close active tab"),
                 ChoiceItem("search.find_file", "Find in file"),
                 ChoiceItem("git.diff", "Compare With Branch"),
+                ChoiceItem("git.diff_remote", "Compare With Remote"),
                 ChoiceItem("git.history", "Git file history"),
                 ChoiceItem("git.blame", "Git blame"),
                 ChoiceItem("git.line_history", "Git line history"),
@@ -1366,6 +1370,7 @@ class TuideApp(App[None]):
             "git.branch_history": self.action_git_branch_history,
             "git.session": self.action_git_session,
             "git.diff": self.action_git_diff,
+            "git.diff_remote": self.action_git_diff_remote,
             "git.changed_files": self.action_git_changed_files,
             "git.history": self.action_git_history,
             "git.blame": self.action_git_blame,
@@ -2215,6 +2220,31 @@ class TuideApp(App[None]):
         await self.query_one(EditorPanel).open_diff_tab(
             f"diff:{path.name}:{branch}",
             f"{branch}:{path.name}",
+            other,
+            str(path.name),
+            current,
+        )
+        self.refresh_status()
+
+    async def action_git_diff_remote(self) -> None:
+        """Open an upstream remote diff tab for the active file."""
+        context = self.active_file_context()
+        if context is None:
+            return
+        path, repo_root = context
+        upstream = self.git_service.upstream_ref(repo_root)
+        if not upstream:
+            self.notify("Current branch has no upstream remote", severity="warning")
+            return
+
+        other = self.git_service.show_file(repo_root, upstream, path)
+        if other is None:
+            self.notify("Unable to read file from the current branch upstream", severity="error")
+            return
+        current = path.read_text(encoding="utf-8", errors="replace")
+        await self.query_one(EditorPanel).open_diff_tab(
+            f"diff:{path.name}:{upstream}",
+            f"{upstream}:{path.name}",
             other,
             str(path.name),
             current,

@@ -385,6 +385,10 @@ class GitService:
             return None
         return f"{remote}/{branch}"
 
+    def upstream_ref(self, repo_root: Path) -> str | None:
+        """Return the public upstream ref for the current branch."""
+        return self._upstream_ref(repo_root)
+
     def unpushed_commit_ids(self, repo_root: Path, limit: int = 200) -> set[str]:
         """Return abbreviated commit ids reachable from HEAD but not upstream."""
         upstream = self._upstream_ref(repo_root)
