@@ -1158,6 +1158,10 @@ class _PushChangedFileItem(ListItem):
 class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
     """Preview unpushed commits, changed files, and diffs before pushing."""
 
+    BINDINGS = [
+        Binding("escape", "escape_preview", "Back", show=False),
+    ]
+
     CSS = """
     GitPushScreen {
         align: center middle;
@@ -1235,12 +1239,11 @@ class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
         background: #1f2d3d;
     }
 
-    #push-nav-list > ListItem.hovered {
-        background: #2a2114;
-    }
-
-    #push-nav-list > ListItem:hover {
-        background: #2a2114;
+    #push-nav-list > ListItem.hovered,
+    #push-nav-list > ListItem:hover,
+    #push-nav-list > ListItem.hovered.--highlight,
+    #push-nav-list > ListItem:hover.--highlight {
+        background: #8a5a16;
     }
 
     #push-nav-list Static {
@@ -1331,6 +1334,10 @@ class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
             return
         if self.handle_escape():
             event.stop()
+
+    def action_escape_preview(self) -> None:
+        """Handle the screen-local Escape binding."""
+        self.handle_escape()
 
     def handle_escape(self) -> bool:
         """Handle Escape locally and return whether it was consumed."""
@@ -1467,7 +1474,7 @@ class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
             widget, _ = self.screen.get_widget_at(event.screen_x, event.screen_y)
             node = widget
             while node is not None:
-                if isinstance(node, ListItem) and node.parent is not None and node.parent.id == "push-nav-list":
+                if isinstance(node, ListItem):
                     target = node
                     break
                 node = node.parent
