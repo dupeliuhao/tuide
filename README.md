@@ -184,7 +184,7 @@ Once the app is open, try this:
 testing testing
 testing 2 testing 2
 
-test again
-test 4
-test 5
-test 6 remote change for second conflict pass
+test again remote pass 3
+test 4 remote pass 3
+test 5 remote pass 3
+test 6 remote change for third conflict pass
