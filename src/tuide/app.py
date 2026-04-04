@@ -501,7 +501,9 @@ class TuideApp(App[None]):
         height: 1;
     }
 
-    #toggle-editor-btn {
+    #toggle-workspace-btn,
+    #toggle-editor-btn,
+    #toggle-terminal-btn {
         width: auto;
         height: 1;
         min-height: 1;
@@ -511,7 +513,9 @@ class TuideApp(App[None]):
         color: #8b949e;
     }
 
-    #toggle-editor-btn:hover {
+    #toggle-workspace-btn:hover,
+    #toggle-editor-btn:hover,
+    #toggle-terminal-btn:hover {
         background: #1d3557;
         color: #e6edf3;
     }
@@ -611,7 +615,9 @@ class TuideApp(App[None]):
                 yield TerminalPanel(self.platform.default_shell)
             with Horizontal(id="status-bar"):
                 yield Static(self.build_status_text(), id="status-left")
+                yield Button("Files", id="toggle-workspace-btn")
                 yield Button("Editor", id="toggle-editor-btn")
+                yield Button("Terminal", id="toggle-terminal-btn")
                 yield Button("⎇ —", id="branch-indicator")
         yield ShortcutBar()
 
@@ -871,6 +877,12 @@ class TuideApp(App[None]):
 
         if button_id == "toggle-editor-btn":
             self.action_toggle_editor()
+            return
+        if button_id == "toggle-workspace-btn":
+            self.action_toggle_workspace()
+            return
+        if button_id == "toggle-terminal-btn":
+            self.action_toggle_terminal()
             return
         if button_id == "branch-indicator":
             self.run_worker(self.action_open_branch_picker(), exclusive=False)
