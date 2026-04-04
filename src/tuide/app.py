@@ -2153,6 +2153,14 @@ class TuideApp(App[None]):
             return
         await self._close_git_update_tabs()
 
+    async def on_git_history_browser_view_close_requested(
+        self,
+        _event: GitHistoryBrowserView.CloseRequested,
+    ) -> None:
+        """Close the single-tab branch history workflow from its top-level Escape."""
+        await self.query_one(EditorPanel).close_virtual_tab("Git Log")
+        self.refresh_status()
+
     async def on_git_changed_files_view_file_selected(
         self, event: GitChangedFilesView.FileSelected
     ) -> None:

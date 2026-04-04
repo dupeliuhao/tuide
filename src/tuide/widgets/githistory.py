@@ -234,6 +234,9 @@ class GitChangedFilesView(Vertical):
 class GitHistoryBrowserView(Vertical):
     """Single-tab branch history browser: commits -> files -> diff."""
 
+    class CloseRequested(Message):
+        """Request to close the single-tab branch history workflow."""
+
     DEFAULT_CSS = """
     GitHistoryBrowserView {
         height: 1fr;
@@ -495,6 +498,7 @@ class GitHistoryBrowserView(Vertical):
     @on(_HistoryNavListView.BackRequested)
     def _on_nav_back_requested(self, _event: _HistoryNavListView.BackRequested) -> None:
         if self._mode != "files":
+            self.post_message(self.CloseRequested())
             return
         self._show_commits()
         try:
