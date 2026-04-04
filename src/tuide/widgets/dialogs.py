@@ -10,6 +10,7 @@ from textual.app import ComposeResult
 from textual.message import Message
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual import events
 from textual.events import Key
 from textual.geometry import Spacing
 from textual.screen import ModalScreen
@@ -27,6 +28,15 @@ class EscapeDismissMixin:
         if event.key == "escape":
             self.dismiss(None)
             event.stop()
+
+
+class PointerTrackingOptionList(OptionList):
+    """OptionList that moves the highlighted row with pointer hover."""
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        option_index = event.style.meta.get("option")
+        if option_index is not None and option_index != self.highlighted:
+            self.highlighted = option_index
 
 
 class ConfirmDialog(EscapeDismissMixin, ModalScreen[bool | None]):
@@ -344,7 +354,7 @@ class CommandPaletteDialog(EscapeDismissMixin, ModalScreen[str | None]):
             yield Label("Command palette", id="palette-title")
             yield Input(placeholder="Type to filter commands", id="palette-input")
             options = [Option(f"{item.label} — {item.description}", id=item.id) for item in self._commands]
-            yield OptionList(*options, id="palette-options")
+            yield PointerTrackingOptionList(*options, id="palette-options")
             with Horizontal(id="palette-actions"):
                 yield Button("Back", id="palette-cancel")
 
@@ -373,7 +383,7 @@ class CommandPaletteDialog(EscapeDismissMixin, ModalScreen[str | None]):
             or query in item.description.lower()
             or query in item.id.lower()
         ]
-        option_list = self.query_one("#palette-options", OptionList)
+        option_list = self.query_one("#palette-options", PointerTrackingOptionList)
         option_list.clear_options()
         option_list.add_options(options)
 
@@ -456,13 +466,13 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
             yield Label(self._title, id="picker-title")
             yield Input(placeholder=self._placeholder, id="picker-input")
             options = [Option(self._format_option(item), id=item.id) for item in self._options]
-            yield OptionList(*options, id="picker-options")
+            yield PointerTrackingOptionList(*options, id="picker-options")
             with Horizontal(id="picker-actions"):
                 yield Button("Back", id="picker-cancel")
 
     def on_mount(self) -> None:
         self.query_one("#picker-input", Input).focus()
-        option_list = self.query_one("#picker-options", OptionList)
+        option_list = self.query_one("#picker-options", PointerTrackingOptionList)
         if option_list.option_count:
             option_list.highlighted = 0
 
@@ -478,7 +488,7 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
         if event.input.id != "picker-input":
             return
         query = event.value.strip().lower()
-        option_list = self.query_one("#picker-options", OptionList)
+        option_list = self.query_one("#picker-options", PointerTrackingOptionList)
         options = [
             Option(self._format_option(item), id=item.id)
             for item in self._options
@@ -545,10 +555,10 @@ class BranchPickerScreen(EscapeDismissMixin, ModalScreen[str | None]):
                 Option(("* " if b == self._current else "  ") + b, id=b)
                 for b in self._branches
             ]
-            yield OptionList(*options, id="branch-list")
+            yield PointerTrackingOptionList(*options, id="branch-list")
 
     def on_mount(self) -> None:
-        ol = self.query_one("#branch-list", OptionList)
+        ol = self.query_one("#branch-list", PointerTrackingOptionList)
         try:
             ol.highlighted = self._branches.index(self._current)
         except ValueError:
@@ -589,14 +599,14 @@ class ContextMenuScreen(EscapeDismissMixin, ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="context-menu"):
-            yield OptionList(
+            yield PointerTrackingOptionList(
                 *[Option(item.label, id=item.id) for item in self._items],
                 id="context-menu-list",
             )
 
     def on_mount(self) -> None:
         self.call_after_refresh(self._position_menu)
-        self.query_one("#context-menu-list", OptionList).focus()
+        self.query_one("#context-menu-list", PointerTrackingOptionList).focus()
 
     def _position_menu(self) -> None:
         sw, sh = self.app.size
@@ -682,11 +692,11 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
                     Option(f"{Path(path).name}:{line}:{column}  {snippet[:60]}", id=str(i))
                     for i, (path, line, column, snippet) in enumerate(self._results)
                 ]
-                yield OptionList(*options, id="refs-list")
+                yield PointerTrackingOptionList(*options, id="refs-list")
 
     def on_mount(self) -> None:
         try:
-            self.query_one("#refs-list", OptionList).focus()
+            self.query_one("#refs-list", PointerTrackingOptionList).focus()
         except Exception:
             pass
 
