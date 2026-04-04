@@ -642,6 +642,7 @@ class TuideApp(App[None]):
         )
         self._cached_branch: str = "—"
         self._workspace_hidden_for_git_log = False
+        self._terminal_hidden_for_git_log = False
 
     def compose(self) -> ComposeResult:
         """Compose the app shell."""
@@ -2007,9 +2008,13 @@ class TuideApp(App[None]):
         workspace_panel = self.query_one("#workspace-panel")
         if workspace_panel.display:
             workspace_panel.display = False
-            self.sync_splitter_visibility()
-            self.refresh_status()
             self._workspace_hidden_for_git_log = True
+        terminal_panel = self.query_one("#terminal-panel")
+        if terminal_panel.display:
+            terminal_panel.display = False
+            self._terminal_hidden_for_git_log = True
+        self.sync_splitter_visibility()
+        self.refresh_status()
         view = GitHistoryBrowserView(
             branch=branch,
             entries=entries,
@@ -2146,9 +2151,15 @@ class TuideApp(App[None]):
             workspace_panel = self.query_one("#workspace-panel")
             if not workspace_panel.display:
                 workspace_panel.display = True
-                self.sync_splitter_visibility()
-                self.refresh_status()
             self._workspace_hidden_for_git_log = False
+        if event.title == "Git Log" and self._terminal_hidden_for_git_log:
+            terminal_panel = self.query_one("#terminal-panel")
+            if not terminal_panel.display:
+                terminal_panel.display = True
+            self._terminal_hidden_for_git_log = False
+        if event.title == "Git Log":
+            self.sync_splitter_visibility()
+            self.refresh_status()
         if event.title != "Git Conflicts":
             return
         await self._close_git_update_tabs()

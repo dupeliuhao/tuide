@@ -255,7 +255,7 @@ class GitHistoryBrowserView(Vertical):
     }
 
     #history-nav-panel {
-        width: 30%;
+        width: 24%;
         border-right: solid #21262d;
     }
 
