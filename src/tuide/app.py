@@ -2330,7 +2330,9 @@ class TuideApp(App[None]):
     async def _open_location(self, path: Path, line: int, column: int) -> None:
         """Open a file and move the cursor to a 1-based line and column."""
         await self._open_editor_file(path)
-        editor = self.query_one(EditorPanel)
+        editor = self._main_editor_panel()
+        if editor is None:
+            return
         text_area = editor.active_text_area
         if text_area is None:
             return
