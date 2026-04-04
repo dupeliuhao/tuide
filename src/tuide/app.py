@@ -685,6 +685,19 @@ class TuideApp(App[None]):
         except Exception:
             pass
 
+    def _main_editor_panel(self) -> EditorPanel | None:
+        """Return the main editor panel even when a modal screen is active."""
+        try:
+            return self.query_one(EditorPanel)
+        except Exception:
+            pass
+        try:
+            if self.screen_stack:
+                return self.screen_stack[0].query_one(EditorPanel)
+        except Exception:
+            pass
+        return None
+
     def _refresh_branch_indicator(self) -> None:
         """Kick off a background thread to update the branch indicator."""
         if not self.is_mounted:
@@ -823,7 +836,10 @@ class TuideApp(App[None]):
         git_head_text: str | None = None
         if repo_root is not None:
             git_head_text = self.git_service.show_file(repo_root, "HEAD", path)
-        await self.query_one(EditorPanel).open_file(path, git_head_text=git_head_text)
+        editor = self._main_editor_panel()
+        if editor is None:
+            raise NoMatches("Main EditorPanel is not mounted")
+        await editor.open_file(path, git_head_text=git_head_text)
         self.refresh_status()
 
     @on(DirectoryTree.FileSelected)
@@ -1476,10 +1492,7 @@ class TuideApp(App[None]):
         self._refresh_branch_indicator()
         self._refresh_dirty_tree()
         if reload_documents:
-            try:
-                editor = self.query_one(EditorPanel)
-            except Exception:
-                editor = None
+            editor = self._main_editor_panel()
             if editor is not None:
                 editor.refresh_repo_documents(
                     repo_root,
@@ -1489,9 +1502,8 @@ class TuideApp(App[None]):
 
     def _sync_open_file_with_git(self, repo_root: Path, path: Path) -> None:
         """Reload one open file against disk and HEAD after a conflict action."""
-        try:
-            editor = self.query_one(EditorPanel)
-        except Exception:
+        editor = self._main_editor_panel()
+        if editor is None:
             return
         editor.sync_file_with_git(path, self.git_service.show_file(repo_root, "HEAD", path))
         self._refresh_dirty_tree()
@@ -1502,9 +1514,8 @@ class TuideApp(App[None]):
         screen = self._active_conflict_screen()
         if screen is not None:
             screen.dismiss(None)
-        try:
-            editor = self.query_one(EditorPanel)
-        except Exception:
+        editor = self._main_editor_panel()
+        if editor is None:
             return
         for title in (
             "Git Conflicts",
