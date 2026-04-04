@@ -1239,6 +1239,10 @@ class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
         background: #2a2114;
     }
 
+    #push-nav-list Static {
+        background: transparent;
+    }
+
     #push-diff-container {
         height: 1fr;
         background: #0d1117;
@@ -1316,6 +1320,21 @@ class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
             self.query_one("#push-nav-list", ListView).focus()
         except Exception:
             pass
+
+    def on_key(self, event: Key) -> None:
+        """Use Escape as in-screen back before dismissing the push preview."""
+        if event.key != "escape":
+            return
+        if self._mode == "files":
+            self._show_commits()
+            try:
+                self.query_one("#push-nav-list", ListView).focus()
+            except Exception:
+                pass
+            event.stop()
+            return
+        self.dismiss(None)
+        event.stop()
 
     def _show_commits(self) -> None:
         self._mode = "commits"
