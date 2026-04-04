@@ -7,6 +7,7 @@ import shutil
 import subprocess
 
 from rich.text import Text
+from textual.events import Resize
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Label, Static
 
@@ -233,6 +234,7 @@ class DiffView(Horizontal):
         self.left_text = left_text
         self.right_title = right_title
         self.right_text = right_text
+        self._last_render_width = 0
 
     def compose(self):
         if _delta_available():
@@ -255,8 +257,19 @@ class DiffView(Horizontal):
         if _delta_available():
             self.call_after_refresh(self._render_delta)
 
+    def on_resize(self, event: Resize) -> None:
+        if not _delta_available():
+            return
+        width = self.size.width or 0
+        if width <= 0 or width == self._last_render_width:
+            return
+        self.call_after_refresh(self._render_delta)
+
     def _render_delta(self) -> None:
         width = self.size.width or shutil.get_terminal_size().columns
+        if width <= 0:
+            return
+        self._last_render_width = width
         content = self.query_one("#delta-content", Static)
         content.update(
             render_side_by_side_diff(
