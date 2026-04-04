@@ -17,8 +17,9 @@ def _patch_terminal_env() -> None:
     """Patch textual_terminal to inherit the user's full shell environment.
 
     The library's TerminalEmulator.open_terminal uses a hardcoded minimal env
-    (only TERM, LC_ALL, HOME). This patch replaces that with os.environ so the
-    embedded shell sees the user's PATH, aliases, and other variables.
+    (only TERM, LC_ALL, HOME). This patch replaces that with the user's current
+    process environment so the embedded shell inherits the host terminal's TERM,
+    COLORTERM, PATH, aliases, and related variables as closely as possible.
     """
     try:
         from textual_terminal._terminal import TerminalEmulator
@@ -28,7 +29,7 @@ def _patch_terminal_env() -> None:
             if self.pid == 0:
                 argv = shlex.split(command)
                 env = os.environ.copy()
-                env["TERM"] = "xterm"
+                env.setdefault("TERM", "xterm-256color")
                 env.setdefault("LC_ALL", "en_US.UTF-8")
                 env["HOME"] = str(Path.home())
                 os.execvpe(argv[0], argv, env)
