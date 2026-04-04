@@ -364,6 +364,41 @@ class GitService:
                 )
         return entries
 
+    def push_preview_entries(self, repo_root: Path, limit: int = 200) -> list[GitHistoryEntry]:
+        """Return commits that are about to be pushed for the current branch."""
+        upstream = self._upstream_ref(repo_root)
+        log_args = [
+            "log",
+            f"--max-count={limit}",
+            "--date=short",
+            "--format=%h%x1f%ad%x1f%an%x1f%s",
+        ]
+        if upstream is not None:
+            log_args.append(f"{upstream}..HEAD")
+        else:
+            log_args.append("HEAD")
+
+        result = self._run(repo_root, log_args)
+        if result is None:
+            return []
+
+        entries: list[GitHistoryEntry] = []
+        for line in result.stdout.splitlines():
+            if not line.strip():
+                continue
+            parts = line.split("\x1f", 3)
+            if len(parts) == 4:
+                entries.append(
+                    GitHistoryEntry(
+                        commit=parts[0],
+                        date=parts[1],
+                        author=parts[2],
+                        subject=parts[3],
+                        unpushed=True,
+                    )
+                )
+        return entries
+
     def _upstream_ref(self, repo_root: Path) -> str | None:
         """Return the current branch upstream ref when one can be resolved."""
         result = self._run(

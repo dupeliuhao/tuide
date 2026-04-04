@@ -17,7 +17,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, ListItem, ListView, OptionList, Static
 from textual.widgets.option_list import Option
 
-from tuide.models import ChoiceItem, CommandItem
+from tuide.models import ChoiceItem, CommandItem, GitHistoryEntry
 from tuide.widgets.diffview import DiffView
 
 
@@ -1113,3 +1113,309 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[tuple[str, bool] | None]):
             self.query_one("#message-input", Input).focus()
             return
         self.dismiss((message, push_after))
+
+
+class _PushCommitItem(ListItem):
+    """Selectable commit row for the push preview screen."""
+
+    def __init__(self, entry: GitHistoryEntry) -> None:
+        super().__init__()
+        self.entry = entry
+
+    def compose(self) -> ComposeResult:
+        yield Static(
+            f"[bold #79c0ff]{self.entry.commit}[/]  "
+            f"[dim #8b949e]{self.entry.date}[/]  "
+            f"[#e6edf3]{self.entry.subject}[/]",
+            markup=True,
+        )
+        yield Static(f"[dim #6e7681]{self.entry.author}[/]", markup=True)
+
+
+class _PushChangedFileItem(ListItem):
+    """Selectable changed-file row inside push preview."""
+
+    _STATUS_COLOR: dict[str, str] = {
+        "M": "#e8820c",
+        "A": "#89d185",
+        "D": "#ff8888",
+        "R": "#79c0ff",
+        "C": "#8b949e",
+    }
+
+    def __init__(self, status: str, filepath: str, old_filepath: str | None) -> None:
+        super().__init__()
+        self.file_status = status
+        self.file_path = filepath
+        self.old_file_path = old_filepath
+
+    def compose(self) -> ComposeResult:
+        color = self._STATUS_COLOR.get(self.file_status, "#c9d1d9")
+        label = f"{self.old_file_path} → {self.file_path}" if self.old_file_path else self.file_path
+        yield Static(f"[bold {color}]{self.file_status}[/]  [#e6edf3]{label}[/]", markup=True)
+
+
+class GitPushScreen(EscapeDismissMixin, ModalScreen[bool | None]):
+    """Preview unpushed commits, changed files, and diffs before pushing."""
+
+    CSS = """
+    GitPushScreen {
+        align: center middle;
+    }
+
+    #push-dialog {
+        width: 96%;
+        height: 90%;
+        border: solid #30363d;
+        background: #161b22;
+    }
+
+    #push-title-bar {
+        height: 1;
+        background: #21262d;
+        color: #e6edf3;
+        padding: 0 1;
+        text-style: bold;
+    }
+
+    #push-body {
+        height: 1fr;
+    }
+
+    #push-commit-panel {
+        width: 34%;
+        border-right: solid #21262d;
+    }
+
+    #push-files-panel {
+        width: 28%;
+        border-right: solid #21262d;
+    }
+
+    #push-diff-panel {
+        width: 1fr;
+    }
+
+    .push-header {
+        height: 1;
+        background: #21262d;
+        color: #8b949e;
+        padding: 0 1;
+    }
+
+    #push-commit-list,
+    #push-file-list {
+        height: 1fr;
+        background: #0d1117;
+        border: none;
+        padding: 0;
+    }
+
+    #push-commit-list > ListItem,
+    #push-file-list > ListItem {
+        background: #0d1117;
+        padding: 0 1;
+    }
+
+    #push-commit-list > ListItem.--highlight,
+    #push-file-list > ListItem.--highlight {
+        background: #1f2d3d;
+    }
+
+    #push-commit-list > ListItem:hover,
+    #push-file-list > ListItem:hover {
+        background: #2a2114;
+    }
+
+    #push-diff-container {
+        height: 1fr;
+        background: #0d1117;
+        border: none;
+    }
+
+    #push-diff-container DiffView {
+        height: 1fr;
+    }
+
+    #push-actions {
+        height: 3;
+        align: right middle;
+        padding: 0 1;
+        border-top: solid #21262d;
+    }
+
+    #push-actions Button {
+        height: 1;
+        min-height: 1;
+        min-width: 10;
+        padding: 0 2;
+        border: none;
+        margin-left: 1;
+    }
+
+    #do-push-btn {
+        background: #0969da;
+        color: #ffffff;
+    }
+
+    #do-push-btn:hover {
+        background: #218bff;
+    }
+
+    .no-push-label {
+        color: #6e7681;
+        padding: 1;
+    }
+    """
+
+    def __init__(self, repo_root: Path, git_service, entries: list[GitHistoryEntry]) -> None:
+        super().__init__()
+        self.repo_root = repo_root
+        self.git_service = git_service
+        self._entries = entries
+        self._current_commit_index: int | None = None
+        self._current_file_index: int | None = None
+        self._current_files: list[tuple[str, str, str | None]] = []
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="push-dialog"):
+            yield Label("Push Preview", id="push-title-bar")
+            with Horizontal(id="push-body"):
+                with Vertical(id="push-commit-panel"):
+                    yield Label("Commits to Push", classes="push-header")
+                    yield ListView(id="push-commit-list")
+                with Vertical(id="push-files-panel"):
+                    yield Label("Changed Files", classes="push-header", id="push-file-header")
+                    yield ListView(id="push-file-list")
+                with Vertical(id="push-diff-panel"):
+                    yield Label("Select a file to preview its diff", classes="push-header", id="push-diff-header")
+                    yield Vertical(id="push-diff-container")
+            with Horizontal(id="push-actions"):
+                yield Button("Cancel", id="push-cancel-btn", classes="dismiss-button")
+                yield Button("Push", id="do-push-btn", disabled=not bool(self._entries))
+
+    def on_mount(self) -> None:
+        branch = self.git_service.current_branch(self.repo_root) or "detached"
+        self.query_one("#push-title-bar", Label).update(
+            f"Push Preview  —  {self.repo_root.name}  ⎇ {branch}"
+        )
+        self._refresh_commit_list()
+        try:
+            self.query_one("#push-commit-list", ListView).focus()
+        except Exception:
+            pass
+
+    def _refresh_commit_list(self) -> None:
+        commit_list = self.query_one("#push-commit-list", ListView)
+        commit_list.clear()
+        if not self._entries:
+            commit_list.append(ListItem(Label("No unpushed commits", classes="no-push-label")))
+            self._show_commit(None)
+            return
+        for entry in self._entries:
+            commit_list.append(_PushCommitItem(entry))
+        commit_list.index = 0
+        self._show_commit(0)
+
+    def _show_commit(self, index: int | None) -> None:
+        self._current_commit_index = index
+        file_list = self.query_one("#push-file-list", ListView)
+        file_header = self.query_one("#push-file-header", Label)
+        file_list.clear()
+        self._current_files = []
+        self._current_file_index = None
+
+        if index is None or index < 0 or index >= len(self._entries):
+            file_header.update("Changed Files")
+            self._show_diff(None)
+            return
+
+        entry = self._entries[index]
+        self._current_files = self.git_service.files_changed_in_commit(self.repo_root, entry.commit)
+        file_header.update(f"Changed Files ({len(self._current_files)})")
+        if not self._current_files:
+            file_list.append(ListItem(Label("No file changes recorded", classes="no-push-label")))
+            self._show_diff(None)
+            return
+
+        for status, filepath, old_filepath in self._current_files:
+            file_list.append(_PushChangedFileItem(status, filepath, old_filepath))
+        file_list.index = 0
+        self._show_diff(0)
+
+    def _show_diff(self, index: int | None) -> None:
+        self._current_file_index = index
+        self.run_worker(self._load_diff(index), exclusive=True, group="push-diff-render")
+
+    async def _load_diff(self, index: int | None) -> None:
+        try:
+            header = self.query_one("#push-diff-header", Label)
+            container = self.query_one("#push-diff-container", Vertical)
+        except Exception:
+            return
+
+        await container.remove_children()
+
+        commit_index = self._current_commit_index
+        if (
+            commit_index is None
+            or commit_index < 0
+            or commit_index >= len(self._entries)
+            or index is None
+            or index < 0
+            or index >= len(self._current_files)
+        ):
+            header.update("Select a file to preview its diff")
+            return
+
+        commit = self._entries[commit_index].commit
+        status, filepath, old_filepath = self._current_files[index]
+        short = commit[:8]
+        header.update(f"{filepath}  ({short})")
+
+        if status == "A":
+            before_text = ""
+            before_label = "/dev/null"
+        else:
+            source = old_filepath if old_filepath else filepath
+            before_raw = await asyncio.to_thread(
+                lambda: self.git_service.show_file(self.repo_root, f"{commit}~1", self.repo_root / source)
+            )
+            before_text = before_raw if before_raw is not None else ""
+            before_label = f"{short}~1:{source}"
+
+        if status == "D":
+            after_text = ""
+            after_label = "/dev/null"
+        else:
+            after_raw = await asyncio.to_thread(
+                lambda: self.git_service.show_file(self.repo_root, commit, self.repo_root / filepath)
+            )
+            after_text = after_raw if after_raw is not None else ""
+            after_label = f"{short}:{filepath}"
+
+        await container.mount(DiffView(before_label, before_text, after_label, after_text))
+
+    @on(ListView.Highlighted, "#push-commit-list")
+    def _on_commit_highlighted(self, event: ListView.Highlighted) -> None:
+        self._show_commit(event.list_view.index)
+
+    @on(ListView.Selected, "#push-commit-list")
+    def _on_commit_selected(self, event: ListView.Selected) -> None:
+        self._show_commit(event.list_view.index)
+
+    @on(ListView.Highlighted, "#push-file-list")
+    def _on_file_highlighted(self, event: ListView.Highlighted) -> None:
+        self._show_diff(event.list_view.index)
+
+    @on(ListView.Selected, "#push-file-list")
+    def _on_file_selected(self, event: ListView.Selected) -> None:
+        self._show_diff(event.list_view.index)
+
+    @on(Button.Pressed, "#push-cancel-btn")
+    def _on_cancel(self) -> None:
+        self.dismiss(None)
+
+    @on(Button.Pressed, "#do-push-btn")
+    def _on_push(self) -> None:
+        self.dismiss(True)

@@ -29,6 +29,7 @@ from tuide.widgets.dialogs import (
     ContextMenuScreen,
     FindReferencesScreen,
     GitCommitScreen,
+    GitPushScreen,
     HelpDialog,
     OptionPickerDialog,
     PromptDialog,
@@ -1955,6 +1956,15 @@ class TuideApp(App[None]):
             return
 
         if action_id == "git.session.push":
+            entries = self.git_service.push_preview_entries(repo_root)
+            if not entries:
+                self.notify("No unpushed commits to push", severity="information")
+                return
+            confirmed = await self.wait_for_screen_result(
+                GitPushScreen(repo_root, self.git_service, entries)
+            )
+            if not confirmed:
+                return
             self.notify("Pushing…", severity="information")
             success, output = await asyncio.to_thread(self.git_service.push, repo_root)
             await self.open_git_output_tab("git:push", repo_root, output)
