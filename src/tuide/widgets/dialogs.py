@@ -581,9 +581,9 @@ class BranchPickerScreen(EscapeDismissMixin, ModalScreen[str | None]):
     }
 
     #branch-picker {
-        width: 38;
+        width: 68;
         height: auto;
-        max-height: 20;
+        max-height: 24;
         border: solid #30363d;
         background: #161b22;
         margin-bottom: 1;
@@ -597,10 +597,16 @@ class BranchPickerScreen(EscapeDismissMixin, ModalScreen[str | None]):
         background: #0d1117;
     }
 
+    #branch-filter {
+        height: 3;
+        margin: 0;
+    }
+
     #branch-list {
         height: auto;
-        max-height: 18;
+        max-height: 20;
         border: none;
+        background: #161b22;
     }
     """
 
@@ -608,26 +614,49 @@ class BranchPickerScreen(EscapeDismissMixin, ModalScreen[str | None]):
         super().__init__()
         self._branches = branches
         self._current = current
+        self._visible_branches = branches[:]
 
     def compose(self) -> ComposeResult:
         with Vertical(id="branch-picker"):
             yield Label("switch branch", id="branch-picker-title")
-            options = [
-                Option(("* " if b == self._current else "  ") + b, id=b)
-                for b in self._branches
-            ]
-            yield PointerTrackingOptionList(*options, id="branch-list")
+            yield Input(placeholder="Filter branches", id="branch-filter")
+            yield PointerTrackingOptionList(*self._branch_options(self._visible_branches), id="branch-list")
 
     def on_mount(self) -> None:
+        self.query_one("#branch-filter", Input).focus()
         ol = self.query_one("#branch-list", PointerTrackingOptionList)
-        try:
-            ol.highlighted = self._branches.index(self._current)
-        except ValueError:
-            pass
-        ol.focus()
+        self._highlight_current_branch(ol)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self.dismiss(event.option_id)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "branch-filter":
+            return
+        query = event.value.strip().lower()
+        self._visible_branches = [
+            branch
+            for branch in self._branches
+            if not query or query in branch.lower()
+        ]
+        option_list = self.query_one("#branch-list", PointerTrackingOptionList)
+        option_list.clear_options()
+        option_list.add_options(self._branch_options(self._visible_branches))
+        self._highlight_current_branch(option_list)
+
+    def _branch_options(self, branches: list[str]) -> list[Option]:
+        return [
+            Option(("* " if branch == self._current else "  ") + branch, id=branch)
+            for branch in branches
+        ]
+
+    def _highlight_current_branch(self, option_list: PointerTrackingOptionList) -> None:
+        if not self._visible_branches:
+            return
+        try:
+            option_list.highlighted = self._visible_branches.index(self._current)
+        except ValueError:
+            option_list.highlighted = 0
 
 
 class ContextMenuScreen(EscapeDismissMixin, ModalScreen[str | None]):
