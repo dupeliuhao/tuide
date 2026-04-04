@@ -93,8 +93,8 @@ class ShortcutBar(Widget):
                 x += len(sep)
             first = False
             hovered = self._hovered == idx
-            key_style = "bold #ffffff on #2d6fd6" if hovered else "bold #cae8ff on #1a3a6b"
-            desc_style = "#e6edf3" if hovered else "#8b949e"
+            key_style = "bold #fff7e6 on #8a5a16" if hovered else "bold #f2cf86 on #35250f"
+            desc_style = "#fff1c2" if hovered else "#8b949e"
             start = x
             key_part = f" {_fmt_shortcut_key(binding.key)} "
             desc_part = f" {binding.description}"
@@ -177,13 +177,13 @@ class TuideApp(App[None]):
     }
 
     .menu-button:hover {
-        background: #1c2128;
+        background: #2a2114;
     }
 
     .menu-button.-active,
     .menu-button:focus {
-        background: #21262d;
-        color: #e6edf3;
+        background: #4b3614;
+        color: #fff1c2;
     }
 
     #main-layout {
@@ -213,7 +213,7 @@ class TuideApp(App[None]):
 
     .panel-splitter:hover,
     .panel-splitter.-dragging {
-        background: #388bfd;
+        background: #c9972b;
         color: #0d1117;
     }
 
@@ -317,12 +317,12 @@ class TuideApp(App[None]):
 
     GitLogView ListItem.hovered,
     GitChangedFilesView ListItem.hovered {
-        background: #161b22;
+        background: #2a2114;
     }
 
     GitLogView ListItem.--highlight,
     GitChangedFilesView ListItem.--highlight {
-        background: #1f2d3d;
+        background: #4b3614;
     }
 
     /* Transparent so the ListItem background (hover/highlight) shows through */
@@ -452,8 +452,8 @@ class TuideApp(App[None]):
     }
 
     .terminal-add-btn:hover {
-        background: #161b22;
-        color: #79c0ff;
+        background: #2a2114;
+        color: #f2cf86;
     }
 
     /* DirectoryTree colour consistency */
@@ -466,12 +466,12 @@ class TuideApp(App[None]):
     }
 
     DirectoryTree .tree--cursor {
-        background: #1f2d3d;
-        color: #e6edf3;
+        background: #4b3614;
+        color: #fff1c2;
     }
 
     DirectoryTree .tree--highlight {
-        background: #21262d;
+        background: #2a2114;
     }
 
     DirectoryTree .tree--guides {
@@ -509,15 +509,15 @@ class TuideApp(App[None]):
         min-height: 1;
         padding: 0 1;
         border: none;
-        background: #1f2d3d;
-        color: #8b949e;
+        background: #35250f;
+        color: #d9b56d;
     }
 
     #toggle-workspace-btn:hover,
     #toggle-editor-btn:hover,
     #toggle-terminal-btn:hover {
-        background: #1d3557;
-        color: #e6edf3;
+        background: #5a4016;
+        color: #fff1c2;
     }
 
     #branch-indicator {
@@ -526,23 +526,23 @@ class TuideApp(App[None]):
         min-height: 1;
         padding: 0 1;
         border: none;
-        background: #1f2d3d;
-        color: #79c0ff;
+        background: #35250f;
+        color: #f2cf86;
     }
 
     #branch-indicator:hover {
-        background: #1d3557;
-        color: #a5d6ff;
+        background: #5a4016;
+        color: #fff7e6;
     }
 
     OptionList > .option-list--option-hover {
-        background: #21262d;
-        color: #e6edf3;
+        background: #2a2114;
+        color: #fff1c2;
     }
 
     OptionList > .option-list--option-hover-highlighted {
-        background: #388bfd;
-        color: #ffffff;
+        background: #8a5a16;
+        color: #fff7e6;
         text-style: bold;
     }
     """

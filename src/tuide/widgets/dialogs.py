@@ -417,14 +417,14 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
     }
 
     #picker-options > .option-list--option-highlighted {
-        background: #1f6feb;
-        color: #e6edf3;
+        background: #8a5a16;
+        color: #fff7e6;
         text-style: bold;
     }
 
     #picker-options:focus > .option-list--option-highlighted {
-        background: #1f6feb;
-        color: #e6edf3;
+        background: #8a5a16;
+        color: #fff7e6;
     }
 
     #picker-actions {
@@ -633,7 +633,7 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
         width: 70;
         height: auto;
         max-height: 22;
-        border: solid #388bfd;
+        border: solid #8a5a16;
         background: #161b22;
         margin-bottom: 1;
         margin-right: 0;
@@ -641,7 +641,7 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
     }
 
     #refs-title {
-        color: #79c0ff;
+        color: #f2cf86;
         height: 1;
         padding: 0 1;
         background: #0d1117;
@@ -748,11 +748,11 @@ class GitCommitScreen(EscapeDismissMixin, ModalScreen[tuple[str, bool] | None]):
     }
 
     #file-list > ListItem.--highlight {
-        background: #1f2d3d;
+        background: #4b3614;
     }
 
     #file-list > ListItem:hover {
-        background: #161b22;
+        background: #2a2114;
     }
 
     #diff-panel {

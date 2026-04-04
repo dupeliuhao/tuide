@@ -122,9 +122,9 @@ class WrappingTabBar(Widget):
                 is_hovered = pane_id == self._hovered_pane
 
                 if is_active:
-                    bg, fg, bold = "#1f2d3d", "#e6edf3", True
+                    bg, fg, bold = "#4b3614", "#fff1c2", True
                 elif is_hovered:
-                    bg, fg, bold = "#161b22", "#c9d1d9", False
+                    bg, fg, bold = "#2a2114", "#f2cf86", False
                 else:
                     bg, fg, bold = "#0d1117", "#8b949e", False
 
@@ -134,7 +134,7 @@ class WrappingTabBar(Widget):
                 tab_style   = ("bold " if bold else "") + f"{fg} on {bg}"
                 name_style  = ("bold " if bold else "") + f"{name_fg} on {bg}"
                 close_style = f"dim #6e7681 on {bg}"
-                sep_style   = "#21262d on #0d1117"
+                sep_style   = "#35250f on #0d1117"
 
                 display_name = _truncate(name)
                 pad_left     = " " * _PAD
@@ -330,9 +330,9 @@ def build_editor_theme() -> TextAreaTheme:
         name="tuide_code",
         base_style=Style(color="#cccccc", bgcolor="#0d1117"),
         gutter_style=Style(color="#6e7681", bgcolor="#0d1117"),
-        cursor_line_style=Style(bgcolor="#2d333b"),
-        cursor_line_gutter_style=Style(color="#e6edf3", bgcolor="#2d333b"),
-        selection_style=Style(bgcolor="#1d3557"),
+        cursor_line_style=Style(bgcolor="#261d12"),
+        cursor_line_gutter_style=Style(color="#fff1c2", bgcolor="#261d12"),
+        selection_style=Style(bgcolor="#5a4016"),
         syntax_styles=syntax_styles,
     )
 
