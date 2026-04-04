@@ -350,6 +350,10 @@ class TuideApp(App[None]):
         border-bottom: solid #21262d;
     }
 
+    #editor-area {
+        height: 1fr;
+    }
+
     #editor-content {
         height: 1fr;
         background: #0d1117;

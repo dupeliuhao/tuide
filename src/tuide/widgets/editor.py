@@ -452,8 +452,9 @@ class EditorPanel(Vertical):
 
     def compose(self) -> ComposeResult:
         yield WrappingTabBar(id="editor-tab-bar")
-        yield FindBar(id="find-bar")
-        yield Vertical(id="editor-content")
+        with Vertical(id="editor-area"):
+            yield FindBar(id="find-bar")
+            yield Vertical(id="editor-content")
 
     def on_mount(self) -> None:
         self._sync_tab_bar()
