@@ -870,7 +870,7 @@ class _ReferenceResultsScroller(ScrollableContainer):
         self.show_vertical_scrollbar = True
 
 
-class FindReferencesScreen(Vertical):
+class FindReferencesScreen(Static):
     """Bottom-left floating result panel showing searchable locations.
 
     Clicking a result opens that location while the popup stays visible. The screen only
@@ -888,18 +888,15 @@ class FindReferencesScreen(Vertical):
             self.column = column
             super().__init__()
 
-    CSS = """
+    DEFAULT_CSS = """
     FindReferencesScreen {
-        overlay: screen;
         layer: overlay;
-        align: left bottom;
+        layout: vertical;
         width: 92;
         height: auto;
         max-height: 14;
         border: solid #388bfd;
         background: #161b22;
-        margin-bottom: 1;
-        margin-left: 0;
         padding: 0;
     }
 
@@ -1010,6 +1007,10 @@ class FindReferencesScreen(Vertical):
     def on_mount(self) -> None:
         self.focus()
         self._refresh_selection()
+        self.call_after_refresh(self._position_panel)
+
+    def on_resize(self, _event: events.Resize) -> None:
+        self.call_after_refresh(self._position_panel)
 
     def on_key(self, event: Key) -> None:
         if event.key == "escape":
@@ -1078,7 +1079,11 @@ class FindReferencesScreen(Vertical):
                 app._find_results_overlay = None
         except Exception:
             pass
-        self.run_worker(self.remove(), exclusive=False)
+        self.display = False
+
+    def _position_panel(self) -> None:
+        y = max(0, self.app.size.height - self.size.height - 1)
+        self.styles.offset = (0, y)
 
     def _format_result(self, path: str, line: int, column: int, snippet: str) -> RichText:
         """Build a lightweight multi-color result row."""

@@ -2601,8 +2601,8 @@ class TuideApp(App[None]):
         if overlay is None or not overlay.is_mounted:
             self._find_results_overlay = None
             return False
-        self.run_worker(self._remove_find_results_overlay_async(), exclusive=False)
         self._find_results_overlay = None
+        overlay.display = False
         return True
 
     async def _remove_find_results_overlay_async(self) -> None:
