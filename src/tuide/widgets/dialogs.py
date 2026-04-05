@@ -50,6 +50,10 @@ class PointerTrackingOptionList(OptionList):
 class PointerTrackingListView(ListView):
     """ListView that moves the highlighted row with pointer hover."""
 
+    def __init__(self, *children: ListItem, **kwargs) -> None:
+        super().__init__(*children, **kwargs)
+        self.show_horizontal_scrollbar = True
+
     def on_mouse_move(self, event: events.MouseMove) -> None:
         target: ListItem | None = None
         try:
@@ -906,14 +910,17 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
         height: auto;
         max-height: 20;
         border: none;
-        overflow-x: auto;
+        overflow-x: scroll;
         overflow-y: auto;
         scrollbar-gutter: stable;
+        scrollbar-size-horizontal: 1;
         background: #0d1117;
         padding: 0;
     }
 
     #refs-list > ListItem {
+        width: auto;
+        min-width: 100%;
         background: #0d1117;
         padding: 0 1;
     }
