@@ -1058,7 +1058,7 @@ class FindReferencesScreen(Vertical):
         self.action_close_results()
 
     def _refresh_selection(self) -> None:
-        rows = list(self.query(".refs-row", _ReferenceResultRow))
+        rows = [row for row in self.query(".refs-row") if isinstance(row, _ReferenceResultRow)]
         for index, row in enumerate(rows):
             row.set_class(index == self._selected_index, "selected")
         if self._selected_index is None or self._selected_index >= len(rows):
