@@ -571,7 +571,7 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
         return item.label
 
 
-class GlobalSearchDialog(EscapeDismissMixin, ModalScreen[tuple[str, str] | None]):
+class GlobalSearchDialog(EscapeDismissMixin, ModalScreen[tuple[str, str, bool] | None]):
     """Single-step global search dialog with mode selection and query input."""
 
     CSS = """
@@ -637,6 +637,7 @@ class GlobalSearchDialog(EscapeDismissMixin, ModalScreen[tuple[str, str] | None]
     def __init__(self) -> None:
         super().__init__()
         self._selected_mode = "search.workspace.text"
+        self._case_sensitive = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="global-search-dialog"):
@@ -650,6 +651,7 @@ class GlobalSearchDialog(EscapeDismissMixin, ModalScreen[tuple[str, str] | None]
             yield Input(placeholder="Type search text, class name, or file name", id="global-search-input")
             with Horizontal(id="global-search-actions"):
                 yield Button("Back", id="global-search-cancel", classes="dismiss-button")
+                yield Button("Case: Off", id="global-search-case", classes="dismiss-button")
                 yield Button("Search", id="global-search-confirm", variant="success")
 
     def on_mount(self) -> None:
@@ -666,12 +668,16 @@ class GlobalSearchDialog(EscapeDismissMixin, ModalScreen[tuple[str, str] | None]
         if not query:
             self.query_one("#global-search-input", Input).focus()
             return
-        self.dismiss((self._selected_mode, query))
+        self.dismiss((self._selected_mode, query, self._case_sensitive))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         event.stop()
         if event.button.id == "global-search-cancel":
             self.dismiss(None)
+            return
+        if event.button.id == "global-search-case":
+            self._case_sensitive = not self._case_sensitive
+            event.button.label = "Case: On" if self._case_sensitive else "Case: Off"
             return
         if event.button.id == "global-search-confirm":
             self._submit()
@@ -842,18 +848,18 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
 
     CSS = """
     FindReferencesScreen {
-        align: right bottom;
+        align: left bottom;
         background: #0d1117 50%;
     }
 
     #refs-panel {
-        width: 70;
+        width: 92;
         height: auto;
         max-height: 22;
         border: solid #388bfd;
         background: #161b22;
         margin-bottom: 1;
-        margin-right: 0;
+        margin-left: 0;
         padding: 0;
     }
 

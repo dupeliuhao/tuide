@@ -1490,13 +1490,13 @@ class TuideApp(App[None]):
         request = await self.wait_for_screen_result(GlobalSearchDialog())
         if request is None:
             return
-        mode, query = request
+        mode, query, case_sensitive = request
 
         if mode == "search.workspace.names":
-            await self._run_workspace_name_search(query)
+            await self._run_workspace_name_search(query, case_sensitive=case_sensitive)
             return
 
-        await self._run_workspace_text_search(query)
+        await self._run_workspace_text_search(query, case_sensitive=case_sensitive)
 
     async def action_remove_workspace_root(self) -> None:
         """Remove the current workspace root."""
@@ -2590,7 +2590,13 @@ class TuideApp(App[None]):
         path_str, line, column = selection
         await self._open_location(Path(path_str), line, column)
 
-    async def _run_workspace_text_search(self, query: str, *, title: str = "Text Search") -> None:
+    async def _run_workspace_text_search(
+        self,
+        query: str,
+        *,
+        title: str = "Text Search",
+        case_sensitive: bool = False,
+    ) -> None:
         """Search text across workspace roots and present openable results."""
         normalized = query.strip()
         if not normalized:
@@ -2598,10 +2604,11 @@ class TuideApp(App[None]):
         results = self.search_service.search_workspace_text_locations(
             self.workspace_state.roots,
             normalized,
+            case_sensitive=case_sensitive,
         )
         await self._present_location_results(title, normalized, results)
 
-    async def _run_workspace_name_search(self, query: str) -> None:
+    async def _run_workspace_name_search(self, query: str, *, case_sensitive: bool = False) -> None:
         """Search file names and lightweight Python symbol names."""
         normalized = query.strip()
         if not normalized:
@@ -2609,6 +2616,7 @@ class TuideApp(App[None]):
         results = self.search_service.search_workspace_names(
             self.workspace_state.roots,
             normalized,
+            case_sensitive=case_sensitive,
         )
         await self._present_location_results("Name Search", normalized, results)
 

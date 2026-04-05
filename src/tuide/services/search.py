@@ -58,19 +58,23 @@ class SearchService:
         roots: list[Path],
         query: str,
         limit: int = 200,
+        *,
+        case_sensitive: bool = False,
     ) -> list[tuple[str, int, int, str]]:
         """Search text across workspace roots and return openable locations."""
         if not query.strip():
             return []
         if shutil.which("rg"):
-            return self._search_rg_locations(roots, query, limit)
-        return self._search_python_locations(roots, query, limit)
+            return self._search_rg_locations(roots, query, limit, case_sensitive=case_sensitive)
+        return self._search_python_locations(roots, query, limit, case_sensitive=case_sensitive)
 
     def search_workspace_names(
         self,
         roots: list[Path],
         query: str,
         limit: int = 200,
+        *,
+        case_sensitive: bool = False,
     ) -> list[tuple[str, int, int, str]]:
         """Search file names plus lightweight Python class/function names."""
         normalized = query.strip()
@@ -79,12 +83,16 @@ class SearchService:
 
         results: list[tuple[str, int, int, str]] = []
         seen: set[tuple[str, int, int, str]] = set()
+        normalized_cmp = normalized if case_sensitive else normalized.lower()
 
         file_limit = max(1, limit // 2)
         for path in self.find_files(roots, normalized, limit=file_limit):
             if path.suffix.lower() == ".pyc" or "__pycache__" in path.parts:
                 continue
             resolved = path.resolve()
+            target_name = resolved.name if case_sensitive else resolved.name.lower()
+            if normalized_cmp not in target_name:
+                continue
             item = (str(resolved), 1, 1, f"[file] {resolved.name} — {resolved.parent}")
             if item in seen:
                 continue
@@ -98,9 +106,19 @@ class SearchService:
             return results
 
         if shutil.which("rg"):
-            symbol_results = self._search_python_defs_rg(roots, normalized, remaining)
+            symbol_results = self._search_python_defs_rg(
+                roots,
+                normalized,
+                remaining,
+                case_sensitive=case_sensitive,
+            )
         else:
-            symbol_results = self._search_python_defs_python(roots, normalized, remaining)
+            symbol_results = self._search_python_defs_python(
+                roots,
+                normalized,
+                remaining,
+                case_sensitive=case_sensitive,
+            )
 
         for item in symbol_results:
             if item in seen:
@@ -163,6 +181,8 @@ class SearchService:
         roots: list[Path],
         query: str,
         limit: int,
+        *,
+        case_sensitive: bool = False,
     ) -> list[tuple[str, int, int, str]]:
         valid_roots = [str(r) for r in roots if r.exists()]
         if not valid_roots:
@@ -174,7 +194,7 @@ class SearchService:
             "--with-filename",
             "--no-heading",
             "--fixed-strings",
-            "--smart-case",
+            "--case-sensitive" if case_sensitive else "--ignore-case",
             query,
         ] + valid_roots
         try:
@@ -201,6 +221,8 @@ class SearchService:
         roots: list[Path],
         query: str,
         limit: int,
+        *,
+        case_sensitive: bool = False,
     ) -> list[tuple[str, int, int, str]]:
         valid_roots = [str(r) for r in roots if r.exists()]
         if not valid_roots:
@@ -212,7 +234,7 @@ class SearchService:
             "--column",
             "--with-filename",
             "--no-heading",
-            "--smart-case",
+            "--case-sensitive" if case_sensitive else "--ignore-case",
             "--glob",
             "*.py",
             pattern,
@@ -229,7 +251,13 @@ class SearchService:
                     path_part, line_part, column_part, snippet = line.split(":", 3)
                     rendered = snippet.strip()
                     name_match = re.search(r"(?:class|(?:async\s+)?def)\s+([A-Za-z_][A-Za-z0-9_]*)", rendered)
-                    if name_match is None or query.lower() not in name_match.group(1).lower():
+                    if name_match is None:
+                        continue
+                    matched_name = name_match.group(1)
+                    if case_sensitive:
+                        if query not in matched_name:
+                            continue
+                    elif query.lower() not in matched_name.lower():
                         continue
                     if rendered.startswith("class "):
                         rendered = f"[class] {rendered}"
@@ -290,8 +318,11 @@ class SearchService:
         roots: list[Path],
         query: str,
         limit: int,
+        *,
+        case_sensitive: bool = False,
     ) -> list[tuple[str, int, int, str]]:
         normalized = query.strip()
+        needle = normalized if case_sensitive else normalized.lower()
         matches: list[tuple[str, int, int, str]] = []
         for root in roots:
             if not root.exists():
@@ -304,7 +335,8 @@ class SearchService:
                 except OSError:
                     continue
                 for line_number, line in enumerate(text.splitlines(), start=1):
-                    column = line.find(normalized)
+                    haystack = line if case_sensitive else line.lower()
+                    column = haystack.find(needle)
                     if column < 0:
                         continue
                     matches.append((str(path), line_number, column + 1, line.strip()))
@@ -317,8 +349,13 @@ class SearchService:
         roots: list[Path],
         query: str,
         limit: int,
+        *,
+        case_sensitive: bool = False,
     ) -> list[tuple[str, int, int, str]]:
-        pattern = re.compile(r"^\s*(class|(?:async\s+)?def)\s+([A-Za-z_][A-Za-z0-9_]*)", re.IGNORECASE)
+        pattern = re.compile(
+            r"^\s*(class|(?:async\s+)?def)\s+([A-Za-z_][A-Za-z0-9_]*)",
+            0 if case_sensitive else re.IGNORECASE,
+        )
         matches: list[tuple[str, int, int, str]] = []
         for root in roots:
             if not root.exists():
@@ -334,7 +371,11 @@ class SearchService:
                     match = pattern.search(line)
                     if match is None:
                         continue
-                    if query.lower() not in match.group(2).lower():
+                    matched_name = match.group(2)
+                    if case_sensitive:
+                        if query not in matched_name:
+                            continue
+                    elif query.lower() not in matched_name.lower():
                         continue
                     kind = "[class]" if match.group(1).strip() == "class" else "[symbol]"
                     matches.append((str(path), line_number, match.start(2) + 1, f"{kind} {line.strip()}"))
