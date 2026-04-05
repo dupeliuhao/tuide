@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from rich.cells import cell_len
 from rich.text import Text as RichText
 from textual import on
 from textual.app import ComposeResult
@@ -44,6 +45,31 @@ class PointerTrackingOptionList(OptionList):
         option_index = event.style.meta.get("option")
         if option_index is not None and option_index != self.highlighted:
             self.highlighted = option_index
+
+
+class PointerTrackingListView(ListView):
+    """ListView that moves the highlighted row with pointer hover."""
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        target: ListItem | None = None
+        try:
+            widget, _ = self.screen.get_widget_at(event.screen_x, event.screen_y)
+            node = widget
+            while node is not None:
+                if isinstance(node, ListItem) and node.parent is self:
+                    target = node
+                    break
+                node = node.parent
+        except Exception:
+            return
+
+        if target is None:
+            return
+
+        for index, item in enumerate(self.query("ListItem")):
+            if item is target and self.index != index:
+                self.index = index
+                break
 
 
 class NeutralFocusDialog(Vertical):
@@ -880,6 +906,31 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
         height: auto;
         max-height: 20;
         border: none;
+        overflow-x: auto;
+        overflow-y: auto;
+        scrollbar-gutter: stable;
+        background: #0d1117;
+        padding: 0;
+    }
+
+    #refs-list > ListItem {
+        background: #0d1117;
+        padding: 0 1;
+    }
+
+    #refs-list > ListItem.--highlight {
+        background: #1f2d3d;
+    }
+
+    #refs-list > ListItem:hover,
+    #refs-list > ListItem:hover.--highlight {
+        background: #8a5a16;
+    }
+
+    #refs-list Static {
+        width: auto;
+        min-width: 100%;
+        background: transparent;
     }
     """
 
@@ -902,27 +953,36 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
             if not self._results:
                 yield Static("No references found.", id="refs-empty")
             else:
-                options = [
-                    Option(self._format_result(path, line, column, snippet), id=str(i))
+                items = [
+                    _ReferenceResultItem(
+                        i,
+                        self._format_result(path, line, column, snippet),
+                        self._row_width(path, line, column, snippet),
+                    )
                     for i, (path, line, column, snippet) in enumerate(self._results)
                 ]
-                yield PointerTrackingOptionList(*options, id="refs-list")
+                yield PointerTrackingListView(*items, id="refs-list")
 
     def on_mount(self) -> None:
         try:
-            self.query_one("#refs-list", PointerTrackingOptionList).focus()
+            refs = self.query_one("#refs-list", PointerTrackingListView)
+            refs.focus()
+            refs.index = 0 if self._results else None
         except Exception:
             pass
 
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        idx = int(event.option_id)
+    @on(ListView.Selected, "#refs-list")
+    def _on_result_selected(self, event: ListView.Selected) -> None:
+        if event.list_view.index is None:
+            return
+        idx = event.list_view.index
         path_str, line, column, _snippet = self._results[idx]
         self.dismiss((path_str, line, column))
 
     def _format_result(self, path: str, line: int, column: int, snippet: str) -> RichText:
         """Build a lightweight multi-color result row."""
         path_obj = Path(path)
-        text = RichText(no_wrap=True, overflow="ellipsis")
+        text = RichText(no_wrap=True, overflow="ignore")
 
         body = snippet.strip()
         for marker, style in (
@@ -942,11 +1002,17 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
         text.append("  ", style="#6e7681")
         text.append(f"{line}:{column}", style="bold #e3a04f")
         text.append("  ", style="#6e7681")
-        text.append(body[:96], style="#c9d1d9")
+        text.append(body, style="#c9d1d9")
 
         if self._symbol.strip():
             self._highlight_query(text, self._symbol.strip())
         return text
+
+    @staticmethod
+    def _row_width(path: str, line: int, column: int, snippet: str) -> int:
+        body = snippet.strip()
+        plain = f"{Path(path).name} — {Path(path).parent}  {line}:{column}  {body}"
+        return max(cell_len(plain) + 4, 96)
 
     @staticmethod
     def _highlight_query(text: RichText, query: str) -> None:
@@ -961,6 +1027,21 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
             )
         except Exception:
             pass
+
+
+class _ReferenceResultItem(ListItem):
+    """Selectable global-search result row with full-width content."""
+
+    def __init__(self, result_index: int, renderable: RichText, row_width: int) -> None:
+        super().__init__()
+        self.result_index = result_index
+        self._renderable = renderable
+        self._row_width = row_width
+
+    def compose(self) -> ComposeResult:
+        row = Static(self._renderable, expand=False, shrink=False)
+        row.styles.width = self._row_width
+        yield row
 
 
 class GitCommitScreen(EscapeDismissMixin, ModalScreen[tuple[str, bool] | None]):
