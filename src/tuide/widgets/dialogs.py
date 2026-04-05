@@ -11,7 +11,7 @@ from textual import on
 from textual.app import ComposeResult
 from textual.message import Message
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual import events
 from textual.events import Key
 from textual.geometry import Spacing
@@ -45,35 +45,6 @@ class PointerTrackingOptionList(OptionList):
         option_index = event.style.meta.get("option")
         if option_index is not None and option_index != self.highlighted:
             self.highlighted = option_index
-
-
-class PointerTrackingListView(ListView):
-    """ListView that moves the highlighted row with pointer hover."""
-
-    def __init__(self, *children: ListItem, **kwargs) -> None:
-        super().__init__(*children, **kwargs)
-        self.show_horizontal_scrollbar = True
-
-    def on_mouse_move(self, event: events.MouseMove) -> None:
-        target: ListItem | None = None
-        try:
-            widget, _ = self.screen.get_widget_at(event.screen_x, event.screen_y)
-            node = widget
-            while node is not None:
-                if isinstance(node, ListItem) and node.parent is self:
-                    target = node
-                    break
-                node = node.parent
-        except Exception:
-            return
-
-        if target is None:
-            return
-
-        for index, item in enumerate(self.query("ListItem")):
-            if item is target and self.index != index:
-                self.index = index
-                break
 
 
 class NeutralFocusDialog(Vertical):
@@ -870,12 +841,43 @@ class ContextMenuScreen(EscapeDismissMixin, ModalScreen[str | None]):
         self.dismiss(event.option_id)
 
 
-class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] | None]):
-    """Bottom-right popup showing symbol-location results.
+class _ReferenceResultRow(Static):
+    """Clickable search-result row with explicit width for horizontal scrolling."""
+
+    class Pressed(Message):
+        def __init__(self, row_index: int) -> None:
+            self.row_index = row_index
+            super().__init__()
+
+    def __init__(self, row_index: int, renderable: RichText, row_width: int) -> None:
+        super().__init__(renderable, expand=False, shrink=False, classes="refs-row")
+        self.row_index = row_index
+        self.styles.width = row_width
+
+    def on_click(self, event: events.Click) -> None:
+        event.stop()
+        self.post_message(self.Pressed(self.row_index))
+
+
+class _ReferenceResultsScroller(ScrollableContainer):
+    """Bidirectional scroll host for search results."""
+
+    BINDINGS = []
+
+    def __init__(self, *children, **kwargs) -> None:
+        super().__init__(*children, **kwargs)
+        self.show_horizontal_scrollbar = True
+        self.show_vertical_scrollbar = True
+
+
+class FindReferencesScreen(Vertical):
+    """Bottom-left floating result panel showing searchable locations.
 
     Clicking a result opens that location while the popup stays visible. The screen only
     dismisses on explicit close actions such as ``Esc`` / ``Back``.
     """
+
+    can_focus = True
 
     class LocationOpened(Message):
         """Posted when the user chooses a location but keeps the result popup open."""
@@ -886,13 +888,14 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
             self.column = column
             super().__init__()
 
+    class CloseRequested(Message):
+        """Posted when the result panel should be dismissed."""
+
     CSS = """
     FindReferencesScreen {
+        overlay: screen;
+        layer: overlay;
         align: left bottom;
-        background: #0d1117 50%;
-    }
-
-    #refs-panel {
         width: 92;
         height: auto;
         max-height: 22;
@@ -903,21 +906,29 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
         padding: 0;
     }
 
-    #refs-title {
-        color: #79c0ff;
+    #refs-header {
         height: 1;
-        padding: 0 1;
         background: #0d1117;
     }
 
-    #refs-empty {
-        color: #8b949e;
-        padding: 1 2;
+    #refs-title {
+        width: 1fr;
+        color: #79c0ff;
+        height: 1;
+        padding: 0 1;
+        content-align: left middle;
+    }
+
+    #refs-back {
+        width: auto;
+        min-width: 0;
+        height: 1;
+        padding: 0 1;
+        margin: 0;
     }
 
     #refs-list {
-        height: auto;
-        max-height: 20;
+        height: 1fr;
         border: none;
         overflow-x: scroll;
         overflow-y: auto;
@@ -933,28 +944,40 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
         padding: 0;
     }
 
-    #refs-list > ListItem {
+    #refs-content {
         width: auto;
-        min-width: 100%;
+        height: auto;
+    }
+
+    .refs-row {
+        width: auto;
         background: #0d1117;
         padding: 0 1;
     }
 
-    #refs-list > ListItem.--highlight {
+    .refs-row.selected {
         background: #1f2d3d;
     }
 
-    #refs-list > ListItem:hover,
-    #refs-list > ListItem:hover.--highlight {
+    .refs-row:hover,
+    .refs-row:hover.selected {
         background: #8a5a16;
     }
 
-    #refs-list Static {
-        width: auto;
-        min-width: 100%;
-        background: transparent;
+    #refs-empty {
+        color: #8b949e;
+        padding: 1 2;
     }
     """
+
+    BINDINGS = [
+        Binding("escape", "close_results", "Close", show=False),
+        Binding("up", "select_previous", "Previous", show=False),
+        Binding("down", "select_next", "Next", show=False),
+        Binding("enter", "open_selected", "Open", show=False),
+        Binding("left", "scroll_left", "Scroll Left", show=False),
+        Binding("right", "scroll_right", "Scroll Right", show=False),
+    ]
 
     def __init__(
         self,
@@ -968,38 +991,82 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
         self._title = title
         self._symbol = symbol
         self._results = results
+        self._selected_index = 0 if results else None
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="refs-panel"):
+        with Horizontal(id="refs-header"):
             yield Label(f"{self._title}: {self._symbol}", id="refs-title")
-            if not self._results:
-                yield Static("No references found.", id="refs-empty")
-            else:
-                items = [
-                    _ReferenceResultItem(
-                        i,
-                        self._format_result(path, line, column, snippet),
-                        self._row_width(path, line, column, snippet),
-                    )
-                    for i, (path, line, column, snippet) in enumerate(self._results)
-                ]
-                yield PointerTrackingListView(*items, id="refs-list")
+            yield Button("Back", id="refs-back", classes="dismiss-button")
+        if not self._results:
+            yield Static("No references found.", id="refs-empty")
+        else:
+            with _ReferenceResultsScroller(id="refs-list"):
+                with Vertical(id="refs-content"):
+                    for i, (path, line, column, snippet) in enumerate(self._results):
+                        yield _ReferenceResultRow(
+                            i,
+                            self._format_result(path, line, column, snippet),
+                            self._row_width(path, line, column, snippet),
+                        )
 
     def on_mount(self) -> None:
+        self.focus()
+        self._refresh_selection()
+
+    def action_close_results(self) -> None:
+        self.post_message(self.CloseRequested())
+
+    def action_select_previous(self) -> None:
+        if self._selected_index is None or self._selected_index <= 0:
+            return
+        self._selected_index -= 1
+        self._refresh_selection()
+
+    def action_select_next(self) -> None:
+        if self._selected_index is None or self._selected_index >= len(self._results) - 1:
+            return
+        self._selected_index += 1
+        self._refresh_selection()
+
+    def action_open_selected(self) -> None:
+        if self._selected_index is None:
+            return
+        path_str, line, column, _snippet = self._results[self._selected_index]
+        self.post_message(self.LocationOpened(path_str, line, column))
+
+    def action_scroll_left(self) -> None:
         try:
-            refs = self.query_one("#refs-list", PointerTrackingListView)
-            refs.focus()
-            refs.index = 0 if self._results else None
+            self.query_one("#refs-list", _ReferenceResultsScroller).scroll_left(8)
         except Exception:
             pass
 
-    @on(ListView.Selected, "#refs-list")
-    def _on_result_selected(self, event: ListView.Selected) -> None:
-        if event.list_view.index is None:
+    def action_scroll_right(self) -> None:
+        try:
+            self.query_one("#refs-list", _ReferenceResultsScroller).scroll_right(8)
+        except Exception:
+            pass
+
+    @on(_ReferenceResultRow.Pressed)
+    def _on_row_pressed(self, event: _ReferenceResultRow.Pressed) -> None:
+        self._selected_index = event.row_index
+        self._refresh_selection()
+        self.action_open_selected()
+
+    @on(Button.Pressed, "#refs-back")
+    def _on_back(self, event: Button.Pressed) -> None:
+        event.stop()
+        self.action_close_results()
+
+    def _refresh_selection(self) -> None:
+        rows = list(self.query(".refs-row", _ReferenceResultRow))
+        for index, row in enumerate(rows):
+            row.set_class(index == self._selected_index, "selected")
+        if self._selected_index is None or self._selected_index >= len(rows):
             return
-        idx = event.list_view.index
-        path_str, line, column, _snippet = self._results[idx]
-        self.post_message(self.LocationOpened(path_str, line, column))
+        try:
+            self.query_one("#refs-list", _ReferenceResultsScroller).scroll_to_widget(rows[self._selected_index])
+        except Exception:
+            pass
 
     def _format_result(self, path: str, line: int, column: int, snippet: str) -> RichText:
         """Build a lightweight multi-color result row."""
@@ -1049,21 +1116,6 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
             )
         except Exception:
             pass
-
-
-class _ReferenceResultItem(ListItem):
-    """Selectable global-search result row with full-width content."""
-
-    def __init__(self, result_index: int, renderable: RichText, row_width: int) -> None:
-        super().__init__()
-        self.result_index = result_index
-        self._renderable = renderable
-        self._row_width = row_width
-
-    def compose(self) -> ComposeResult:
-        row = Static(self._renderable, expand=False, shrink=False)
-        row.styles.width = self._row_width
-        yield row
 
 
 class GitCommitScreen(EscapeDismissMixin, ModalScreen[tuple[str, bool] | None]):

@@ -644,6 +644,7 @@ class TuideApp(App[None]):
         self._cached_branch: str = "—"
         self._workspace_hidden_for_git_log = False
         self._terminal_hidden_for_git_log = False
+        self._find_results_overlay: FindReferencesScreen | None = None
 
     def compose(self) -> ComposeResult:
         """Compose the app shell."""
@@ -1265,6 +1266,8 @@ class TuideApp(App[None]):
 
     def action_escape_focus(self) -> None:
         """Unwind UI layers, or open quit confirmation from the main shell."""
+        if self._close_find_results_overlay():
+            return
         if len(self.screen_stack) > 1:
             top_screen = self.screen_stack[-1]
             handle_escape = getattr(top_screen, "handle_escape", None)
@@ -2447,14 +2450,7 @@ class TuideApp(App[None]):
             except (ValueError, IndexError):
                 continue
 
-        selection = await self.wait_for_screen_result(
-            FindReferencesScreen(symbol, results)
-        )
-        if selection is None:
-            return
-
-        path_str, line, column = selection
-        await self._open_location(Path(path_str), line, column)
+        await self._show_find_results_overlay("References", symbol, results)
 
     async def _run_code_intelligence(self, intent: str) -> None:
         """Run code intelligence or AI fallback."""
@@ -2549,15 +2545,13 @@ class TuideApp(App[None]):
             await self._open_location(target.path, target.line, target.column)
             return
 
-        self.push_screen(
-            FindReferencesScreen(
-                symbol,
-                [
-                    (str(target.path), target.line, target.column, target.preview)
-                    for target in targets
-                ],
-                title=title,
-            )
+        await self._show_find_results_overlay(
+            title,
+            symbol,
+            [
+                (str(target.path), target.line, target.column, target.preview)
+                for target in targets
+            ],
         )
 
     async def _present_location_results(
@@ -2576,7 +2570,7 @@ class TuideApp(App[None]):
             await self._open_location(Path(path_str), line, column)
             return
 
-        self.push_screen(FindReferencesScreen(query, results, title=title))
+        await self._show_find_results_overlay(title, query, results)
 
     def on_find_references_screen_location_opened(
         self,
@@ -2587,6 +2581,44 @@ class TuideApp(App[None]):
             self._open_location(Path(message.path_str), message.line, message.column),
             exclusive=False,
         )
+
+    async def _show_find_results_overlay(
+        self,
+        title: str,
+        symbol: str,
+        results: list[tuple[str, int, int, str]],
+    ) -> None:
+        """Show or replace the floating location-result overlay."""
+        await self._remove_find_results_overlay_async()
+        overlay = FindReferencesScreen(symbol, results, title=title)
+        self._find_results_overlay = overlay
+        await self.screen.mount(overlay)
+
+    def _close_find_results_overlay(self) -> bool:
+        """Dismiss the floating location-result overlay if it is open."""
+        overlay = self._find_results_overlay
+        if overlay is None or not overlay.is_mounted:
+            self._find_results_overlay = None
+            return False
+        self.run_worker(self._remove_find_results_overlay_async(), exclusive=False)
+        self._find_results_overlay = None
+        return True
+
+    async def _remove_find_results_overlay_async(self) -> None:
+        """Remove the floating location-result overlay when present."""
+        overlay = self._find_results_overlay
+        if overlay is None or not overlay.is_mounted:
+            self._find_results_overlay = None
+            return
+        self._find_results_overlay = None
+        await overlay.remove()
+
+    def on_find_references_screen_close_requested(
+        self,
+        _message: FindReferencesScreen.CloseRequested,
+    ) -> None:
+        """Close the floating location-result overlay."""
+        self._close_find_results_overlay()
 
     async def _run_workspace_text_search(
         self,
