@@ -571,6 +571,123 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
         return item.label
 
 
+class GlobalSearchDialog(EscapeDismissMixin, ModalScreen[tuple[str, str] | None]):
+    """Single-step global search dialog with mode selection and query input."""
+
+    CSS = """
+    GlobalSearchDialog {
+        align: center middle;
+    }
+
+    #global-search-dialog {
+        width: 80;
+        height: 16;
+        border: solid #30363d;
+        background: #161b22;
+        padding: 0 1;
+    }
+
+    #global-search-title {
+        text-style: bold;
+        color: #e6edf3;
+        height: 1;
+    }
+
+    #global-search-modes {
+        height: 4;
+        border: none;
+        background: #161b22;
+        padding: 0;
+    }
+
+    #global-search-modes > .option-list--option-highlighted {
+        background: #8a5a16;
+        color: #fff7e6;
+        text-style: bold;
+    }
+
+    #global-search-modes:focus > .option-list--option-highlighted {
+        background: #8a5a16;
+        color: #fff7e6;
+    }
+
+    #global-search-input {
+        height: 3;
+        margin: 0;
+    }
+
+    #global-search-actions {
+        width: 100%;
+        height: 1;
+        align: right middle;
+    }
+
+    Button {
+        height: 1;
+        min-height: 1;
+        padding: 0 2;
+        border: none;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._selected_mode = "search.workspace.text"
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="global-search-dialog"):
+            yield Label("Global search", id="global-search-title")
+            yield PointerTrackingOptionList(
+                Option("Text - Search plain text across files in the workspace", id="search.workspace.text"),
+                Option("Names - Search file names plus lightweight Python class/function names", id="search.workspace.names"),
+                id="global-search-modes",
+                track_pointer=False,
+            )
+            yield Input(placeholder="Type search text, class name, or file name", id="global-search-input")
+            with Horizontal(id="global-search-actions"):
+                yield Button("Back", id="global-search-cancel", classes="dismiss-button")
+                yield Button("Search", id="global-search-confirm", variant="success")
+
+    def on_mount(self) -> None:
+        modes = self.query_one("#global-search-modes", PointerTrackingOptionList)
+        if modes.option_count:
+            modes.highlighted = 0
+        self.query_one("#global-search-input", Input).focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def _submit(self) -> None:
+        query = self.query_one("#global-search-input", Input).value.strip()
+        if not query:
+            self.query_one("#global-search-input", Input).focus()
+            return
+        self.dismiss((self._selected_mode, query))
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        if event.button.id == "global-search-cancel":
+            self.dismiss(None)
+            return
+        if event.button.id == "global-search-confirm":
+            self._submit()
+
+    @on(Input.Submitted, "#global-search-input")
+    def _on_submit(self, event: Input.Submitted) -> None:
+        event.stop()
+        self._submit()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id != "global-search-modes":
+            return
+        self._selected_mode = event.option_id
+        self.query_one("#global-search-input", Input).focus()
+
+
 class BranchPickerScreen(EscapeDismissMixin, ModalScreen[str | None]):
     """Bottom-right branch picker popup."""
 

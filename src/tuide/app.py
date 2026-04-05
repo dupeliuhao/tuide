@@ -28,6 +28,7 @@ from tuide.widgets.dialogs import (
     ConfirmDialog,
     ContextMenuScreen,
     FindReferencesScreen,
+    GlobalSearchDialog,
     GitCommitScreen,
     GitPushScreen,
     HelpDialog,
@@ -1486,41 +1487,15 @@ class TuideApp(App[None]):
 
     async def action_find_in_workspace(self) -> None:
         """Run lightweight global search across workspace text or names."""
-        mode = await self.wait_for_screen_result(
-            OptionPickerDialog(
-                "Global search",
-                [
-                    ChoiceItem(
-                        id="search.workspace.text",
-                        label="Text",
-                        description="Search plain text across files in the workspace",
-                    ),
-                    ChoiceItem(
-                        id="search.workspace.names",
-                        label="Names",
-                        description="Search file names plus lightweight Python class/function names",
-                    ),
-                ],
-                placeholder="Choose search mode",
-            )
-        )
-        if mode is None:
+        request = await self.wait_for_screen_result(GlobalSearchDialog())
+        if request is None:
             return
+        mode, query = request
 
         if mode == "search.workspace.names":
-            query = await self.wait_for_screen_result(
-                PromptDialog("Global name search", placeholder="class, function, or file name")
-            )
-            if not query:
-                return
             await self._run_workspace_name_search(query)
             return
 
-        query = await self.wait_for_screen_result(
-            PromptDialog("Global text search", placeholder="search text")
-        )
-        if not query:
-            return
         await self._run_workspace_text_search(query)
 
     async def action_remove_workspace_root(self) -> None:
