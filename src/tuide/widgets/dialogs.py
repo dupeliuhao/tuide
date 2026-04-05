@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from rich.text import Text as RichText
 from textual import on
 from textual.app import ComposeResult
 from textual.message import Message
@@ -902,7 +903,7 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
                 yield Static("No references found.", id="refs-empty")
             else:
                 options = [
-                    Option(f"{Path(path).name}:{line}:{column}  {snippet[:60]}", id=str(i))
+                    Option(self._format_result(path, line, column, snippet), id=str(i))
                     for i, (path, line, column, snippet) in enumerate(self._results)
                 ]
                 yield PointerTrackingOptionList(*options, id="refs-list")
@@ -917,6 +918,49 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
         idx = int(event.option_id)
         path_str, line, column, _snippet = self._results[idx]
         self.dismiss((path_str, line, column))
+
+    def _format_result(self, path: str, line: int, column: int, snippet: str) -> RichText:
+        """Build a lightweight multi-color result row."""
+        path_obj = Path(path)
+        text = RichText(no_wrap=True, overflow="ellipsis")
+
+        body = snippet.strip()
+        for marker, style in (
+            ("[file] ", "bold #89d185"),
+            ("[class] ", "bold #79c0ff"),
+            ("[symbol] ", "bold #e3a04f"),
+        ):
+            if body.startswith(marker):
+                body = body[len(marker):]
+                text.append(marker, style=style)
+                break
+
+        text.append(path_obj.name, style="bold #79c0ff")
+        if path_obj.parent != path_obj:
+            text.append(" — ", style="#6e7681")
+            text.append(str(path_obj.parent), style="#8b949e")
+        text.append("  ", style="#6e7681")
+        text.append(f"{line}:{column}", style="bold #e3a04f")
+        text.append("  ", style="#6e7681")
+        text.append(body[:96], style="#c9d1d9")
+
+        if self._symbol.strip():
+            self._highlight_query(text, self._symbol.strip())
+        return text
+
+    @staticmethod
+    def _highlight_query(text: RichText, query: str) -> None:
+        """Highlight the searched token inside the rendered row."""
+        if not query:
+            return
+        try:
+            text.highlight_words(
+                [query],
+                style="bold #fff7e6 on #8a5a16",
+                case_sensitive=False,
+            )
+        except Exception:
+            pass
 
 
 class GitCommitScreen(EscapeDismissMixin, ModalScreen[tuple[str, bool] | None]):
