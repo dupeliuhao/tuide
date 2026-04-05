@@ -597,7 +597,7 @@ class TuideApp(App[None]):
         Binding("ctrl+shift+z", "redo_in_editor", "Redo", show=False),
         Binding("ctrl+w", "close_tab", "Close Tab", show=False, priority=True),
         Binding("ctrl+f", "find_in_file", "Find", priority=True),
-        Binding("ctrl+shift+f", "find_in_workspace", "Find in Workspace", priority=True),
+        Binding("ctrl+shift+f", "find_in_workspace", "Global Search", priority=True),
         Binding("ctrl+.", "show_context_actions", "Context Actions", priority=True),
         Binding("ctrl+b", "toggle_workspace", "Toggle Workspace", priority=True),
         Binding("ctrl+e", "toggle_editor", "Toggle Editor", priority=True),
@@ -1105,9 +1105,7 @@ class TuideApp(App[None]):
             text = "\n".join(matches) if matches else "No matches."
             await editor.open_result_tab(f"find:{short}", text)
         elif action_id == "ctx.find_workspace_selected":
-            matches = self.search_service.search_workspace_text(self.workspace_state.roots, selected)
-            text = "\n".join(matches) if matches else "No matches."
-            await editor.open_result_tab(f"workspace-search:{short}", text)
+            await self._run_workspace_text_search(selected, title="Workspace Search")
         elif action_id == "ctx.git_line_history":
             cursor = editor.active_cursor()
             start, end = (cursor[0], cursor[0]) if cursor else (1, 1)
@@ -1286,7 +1284,7 @@ class TuideApp(App[None]):
             CommandItem("workspace.remove_root", "Remove workspace root", "Remove the active workspace root"),
             CommandItem("search.quick_open", "Quick open", "Open a file by name across the workspace"),
             CommandItem("search.find_file", "Find in file", "Search inside the active file"),
-            CommandItem("search.find_workspace", "Find in workspace", "Search text across workspace roots"),
+            CommandItem("search.find_workspace", "Global search", "Search text, files, and lightweight symbols across the workspace"),
             CommandItem("view.toggle_workspace", "Toggle workspace", "Show or hide the left panel"),
             CommandItem("view.toggle_terminal", "Toggle terminal", "Show or hide the right panel"),
             CommandItem("git.branch_history", "Git branch history", "Browse commits on the current branch"),
@@ -1329,7 +1327,7 @@ class TuideApp(App[None]):
                 ChoiceItem("workspace.remove_root", "Remove active workspace root"),
                 ChoiceItem("todo.list", "Todo list"),
                 ChoiceItem("search.quick_open", "Quick open file"),
-                ChoiceItem("search.find_workspace", "Search workspace"),
+                ChoiceItem("search.find_workspace", "Global search"),
             ]
             title = "Workspace actions"
         elif focused_id == "terminal-panel" or focused_id.startswith("embedded-terminal") or focused_id.startswith("terminal-fallback"):
@@ -1487,18 +1485,43 @@ class TuideApp(App[None]):
         self.query_one(EditorPanel).open_find_bar()
 
     async def action_find_in_workspace(self) -> None:
-        """Search for text across workspace roots."""
+        """Run lightweight global search across workspace text or names."""
+        mode = await self.wait_for_screen_result(
+            OptionPickerDialog(
+                "Global search",
+                [
+                    ChoiceItem(
+                        id="search.workspace.text",
+                        label="Text",
+                        description="Search plain text across files in the workspace",
+                    ),
+                    ChoiceItem(
+                        id="search.workspace.names",
+                        label="Names",
+                        description="Search file names plus lightweight Python class/function names",
+                    ),
+                ],
+                placeholder="Choose search mode",
+            )
+        )
+        if mode is None:
+            return
+
+        if mode == "search.workspace.names":
+            query = await self.wait_for_screen_result(
+                PromptDialog("Global name search", placeholder="class, function, or file name")
+            )
+            if not query:
+                return
+            await self._run_workspace_name_search(query)
+            return
+
         query = await self.wait_for_screen_result(
-            PromptDialog("Find in workspace", placeholder="search text")
+            PromptDialog("Global text search", placeholder="search text")
         )
         if not query:
             return
-
-        matches = self.search_service.search_workspace_text(self.workspace_state.roots, query)
-        title = f"workspace-search:{query}"
-        text = "\n".join(matches) if matches else "No workspace matches found."
-        await self.query_one(EditorPanel).open_result_tab(title, text)
-        self.refresh_status()
+        await self._run_workspace_text_search(query)
 
     async def action_remove_workspace_root(self) -> None:
         """Remove the current workspace root."""
@@ -2566,6 +2589,53 @@ class TuideApp(App[None]):
 
         path_str, line, column = selection
         await self._open_location(Path(path_str), line, column)
+
+    async def _present_location_results(
+        self,
+        title: str,
+        query: str,
+        results: list[tuple[str, int, int, str]],
+    ) -> None:
+        """Open one location directly or present a lightweight result picker."""
+        if not results:
+            self.notify(f"No matches found for {query}", severity="warning")
+            return
+
+        if len(results) == 1:
+            path_str, line, column, _snippet = results[0]
+            await self._open_location(Path(path_str), line, column)
+            return
+
+        selection = await self.wait_for_screen_result(
+            FindReferencesScreen(query, results, title=title)
+        )
+        if selection is None:
+            return
+
+        path_str, line, column = selection
+        await self._open_location(Path(path_str), line, column)
+
+    async def _run_workspace_text_search(self, query: str, *, title: str = "Text Search") -> None:
+        """Search text across workspace roots and present openable results."""
+        normalized = query.strip()
+        if not normalized:
+            return
+        results = self.search_service.search_workspace_text_locations(
+            self.workspace_state.roots,
+            normalized,
+        )
+        await self._present_location_results(title, normalized, results)
+
+    async def _run_workspace_name_search(self, query: str) -> None:
+        """Search file names and lightweight Python symbol names."""
+        normalized = query.strip()
+        if not normalized:
+            return
+        results = self.search_service.search_workspace_names(
+            self.workspace_state.roots,
+            normalized,
+        )
+        await self._present_location_results("Name Search", normalized, results)
 
     async def _open_location(self, path: Path, line: int, column: int) -> None:
         """Open a file and move the cursor to a 1-based line and column."""
