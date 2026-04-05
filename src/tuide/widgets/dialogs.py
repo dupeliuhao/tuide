@@ -873,9 +873,18 @@ class ContextMenuScreen(EscapeDismissMixin, ModalScreen[str | None]):
 class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] | None]):
     """Bottom-right popup showing symbol-location results.
 
-    Returns ``(path_str, line_number, column_number)`` when the user selects an entry, or
-    ``None`` when dismissed.
+    Clicking a result opens that location while the popup stays visible. The screen only
+    dismisses on explicit close actions such as ``Esc`` / ``Back``.
     """
+
+    class LocationOpened(Message):
+        """Posted when the user chooses a location but keeps the result popup open."""
+
+        def __init__(self, path_str: str, line: int, column: int) -> None:
+            self.path_str = path_str
+            self.line = line
+            self.column = column
+            super().__init__()
 
     CSS = """
     FindReferencesScreen {
@@ -914,6 +923,12 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
         overflow-y: auto;
         scrollbar-gutter: stable;
         scrollbar-size-horizontal: 1;
+        scrollbar-background: #0d1117;
+        scrollbar-background-hover: #161b22;
+        scrollbar-color: #6e7681;
+        scrollbar-color-hover: #8b949e;
+        scrollbar-color-active: #8a5a16;
+        scrollbar-corner-color: #0d1117;
         background: #0d1117;
         padding: 0;
     }
@@ -984,7 +999,7 @@ class FindReferencesScreen(EscapeDismissMixin, ModalScreen[tuple[str, int, int] 
             return
         idx = event.list_view.index
         path_str, line, column, _snippet = self._results[idx]
-        self.dismiss((path_str, line, column))
+        self.post_message(self.LocationOpened(path_str, line, column))
 
     def _format_result(self, path: str, line: int, column: int, snippet: str) -> RichText:
         """Build a lightweight multi-color result row."""

@@ -2549,7 +2549,7 @@ class TuideApp(App[None]):
             await self._open_location(target.path, target.line, target.column)
             return
 
-        selection = await self.wait_for_screen_result(
+        self.push_screen(
             FindReferencesScreen(
                 symbol,
                 [
@@ -2559,11 +2559,6 @@ class TuideApp(App[None]):
                 title=title,
             )
         )
-        if selection is None:
-            return
-
-        path_str, line, column = selection
-        await self._open_location(Path(path_str), line, column)
 
     async def _present_location_results(
         self,
@@ -2581,14 +2576,17 @@ class TuideApp(App[None]):
             await self._open_location(Path(path_str), line, column)
             return
 
-        selection = await self.wait_for_screen_result(
-            FindReferencesScreen(query, results, title=title)
-        )
-        if selection is None:
-            return
+        self.push_screen(FindReferencesScreen(query, results, title=title))
 
-        path_str, line, column = selection
-        await self._open_location(Path(path_str), line, column)
+    def on_find_references_screen_location_opened(
+        self,
+        message: FindReferencesScreen.LocationOpened,
+    ) -> None:
+        """Open a selected search result while keeping the result popup visible."""
+        self.run_worker(
+            self._open_location(Path(message.path_str), message.line, message.column),
+            exclusive=False,
+        )
 
     async def _run_workspace_text_search(
         self,
