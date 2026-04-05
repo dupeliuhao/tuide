@@ -928,7 +928,8 @@ class FindReferencesScreen(Vertical):
     }
 
     #refs-list {
-        height: 1fr;
+        height: auto;
+        max-height: 18;
         border: none;
         overflow-x: scroll;
         overflow-y: auto;
@@ -1012,6 +1013,11 @@ class FindReferencesScreen(Vertical):
     def on_mount(self) -> None:
         self.focus()
         self._refresh_selection()
+
+    def on_key(self, event: Key) -> None:
+        if event.key == "escape":
+            self.action_close_results()
+            event.stop()
 
     def action_close_results(self) -> None:
         self.post_message(self.CloseRequested())
