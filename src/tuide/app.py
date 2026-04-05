@@ -151,6 +151,7 @@ class TuideApp(App[None]):
 
     Screen {
         layout: vertical;
+        layers: base overlay;
         background: #0d1117;
         color: #e6edf3;
     }
@@ -2612,13 +2613,6 @@ class TuideApp(App[None]):
             return
         self._find_results_overlay = None
         await overlay.remove()
-
-    def on_find_references_screen_close_requested(
-        self,
-        _message: FindReferencesScreen.CloseRequested,
-    ) -> None:
-        """Close the floating location-result overlay."""
-        self._close_find_results_overlay()
 
     async def _run_workspace_text_search(
         self,

@@ -888,9 +888,6 @@ class FindReferencesScreen(Vertical):
             self.column = column
             super().__init__()
 
-    class CloseRequested(Message):
-        """Posted when the result panel should be dismissed."""
-
     CSS = """
     FindReferencesScreen {
         overlay: screen;
@@ -898,7 +895,7 @@ class FindReferencesScreen(Vertical):
         align: left bottom;
         width: 92;
         height: auto;
-        max-height: 22;
+        max-height: 14;
         border: solid #388bfd;
         background: #161b22;
         margin-bottom: 1;
@@ -929,7 +926,7 @@ class FindReferencesScreen(Vertical):
 
     #refs-list {
         height: auto;
-        max-height: 18;
+        max-height: 10;
         border: none;
         overflow-x: scroll;
         overflow-y: auto;
@@ -1016,11 +1013,11 @@ class FindReferencesScreen(Vertical):
 
     def on_key(self, event: Key) -> None:
         if event.key == "escape":
-            self.action_close_results()
+            self._close_overlay()
             event.stop()
 
     def action_close_results(self) -> None:
-        self.post_message(self.CloseRequested())
+        self._close_overlay()
 
     def action_select_previous(self) -> None:
         if self._selected_index is None or self._selected_index <= 0:
@@ -1061,7 +1058,7 @@ class FindReferencesScreen(Vertical):
     @on(Button.Pressed, "#refs-back")
     def _on_back(self, event: Button.Pressed) -> None:
         event.stop()
-        self.action_close_results()
+        self._close_overlay()
 
     def _refresh_selection(self) -> None:
         rows = [row for row in self.query(".refs-row") if isinstance(row, _ReferenceResultRow)]
@@ -1073,6 +1070,15 @@ class FindReferencesScreen(Vertical):
             self.query_one("#refs-list", _ReferenceResultsScroller).scroll_to_widget(rows[self._selected_index])
         except Exception:
             pass
+
+    def _close_overlay(self) -> None:
+        app = self.app
+        try:
+            if getattr(app, "_find_results_overlay", None) is self:
+                app._find_results_overlay = None
+        except Exception:
+            pass
+        self.run_worker(self.remove(), exclusive=False)
 
     def _format_result(self, path: str, line: int, column: int, snippet: str) -> RichText:
         """Build a lightweight multi-color result row."""
