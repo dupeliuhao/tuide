@@ -512,11 +512,25 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
     def on_mount(self) -> None:
         self.query_one("#picker-input", Input).focus()
         option_list = self.query_one("#picker-options", PointerTrackingOptionList)
-        if option_list.option_count and self._confirm_label is None:
+        option_list.track_pointer = True
+        if option_list.option_count:
             option_list.highlighted = 0
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+    def on_key(self, event: Key) -> None:
+        if event.key not in {"down", "up"}:
+            return
+        if self.focused is not self.query_one("#picker-input", Input):
+            return
+        option_list = self.query_one("#picker-options", PointerTrackingOptionList)
+        if not option_list.option_count:
+            return
+        option_list.focus()
+        if option_list.highlighted is None:
+            option_list.highlighted = 0 if event.key == "down" else option_list.option_count - 1
+        event.stop()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         event.stop()
@@ -544,10 +558,9 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
         ]
         option_list.clear_options()
         option_list.add_options(options)
-        if self._confirm_label is None:
-            if option_list.option_count:
-                option_list.highlighted = 0
-        else:
+        if option_list.option_count:
+            option_list.highlighted = 0
+        if self._confirm_label is not None:
             option_list.track_pointer = True
             self._pending_selection = None
             try:

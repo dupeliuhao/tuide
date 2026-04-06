@@ -1485,12 +1485,29 @@ class TuideApp(App[None]):
         await self._run_workspace_text_search(query, case_sensitive=case_sensitive)
 
     async def action_remove_workspace_root(self) -> None:
-        """Remove the current workspace root."""
+        """Pick and remove a workspace root."""
         if len(self.workspace_state.roots) <= 1:
             self.notify("Keep at least one workspace root", severity="warning")
             return
 
-        current = self.workspace_state.roots[0]
+        selected = await self.wait_for_screen_result(
+            OptionPickerDialog(
+                "Remove workspace root",
+                [
+                    ChoiceItem(
+                        id=str(root),
+                        label=root.name,
+                        description=str(root.parent),
+                    )
+                    for root in self.workspace_state.roots
+                ],
+                placeholder="Filter workspace roots",
+            )
+        )
+        if not selected:
+            return
+
+        current = Path(selected)
         confirmed = await self.wait_for_screen_result(
             ConfirmDialog(
                 "Remove workspace root",
