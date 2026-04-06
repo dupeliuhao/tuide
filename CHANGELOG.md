@@ -8,6 +8,7 @@ First stable release of `tuide` as a lightweight Linux-first terminal IDE focuse
 
 - multi-workspace support with add/remove workspace roots
 - lightweight directory picker for adding workspace roots
+- one-command `install.sh` bootstrap flow for first-time setup
 - Git session menu for commit, push, fetch, update, merge, branch switch, and history
 - push preview for unpushed commits before executing push
 - active-file compare with branch and compare with remote

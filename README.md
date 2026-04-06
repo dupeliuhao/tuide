@@ -58,6 +58,23 @@ Git-heavy features work best if these tools are also installed:
 
 ## Install
 
+Fastest path:
+
+```bash
+git clone https://github.com/dupeliuhao/tuide.git
+cd tuide
+./install.sh
+```
+
+That script will:
+
+- install common Linux dependencies when possible
+- create `vtuide`
+- install `tuide`
+- fall back automatically if the terminal extra cannot be installed
+
+If you want the manual path instead, use the steps below.
+
 ### 1. Clone the repo
 
 ```bash
@@ -140,6 +157,17 @@ Fallback entrypoint:
 
 ```bash
 python -m tuide.main
+```
+
+## Installer script options
+
+The installer also supports a few useful flags:
+
+```bash
+./install.sh --help
+./install.sh --skip-system-deps
+./install.sh --no-terminal
+./install.sh --venv-dir .venv
 ```
 
 ## First-run checklist
