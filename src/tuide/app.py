@@ -260,11 +260,6 @@ class TuideApp(App[None]):
         display: none;
     }
 
-    #workspace-root-select {
-        margin: 0;
-        height: 3;
-    }
-
     #workspace-trees {
         height: 1fr;
         background: #0d1117;
@@ -274,7 +269,8 @@ class TuideApp(App[None]):
     }
 
     .workspace-tree {
-        height: 1fr;
+        height: auto;
+        min-height: 1;
         background: #0d1117;
         border: none;
         padding: 0;
@@ -915,20 +911,6 @@ class TuideApp(App[None]):
         """Open a selected file from the workspace tree."""
         await self._open_editor_file(event.path)
 
-    @on(Select.Changed)
-    async def handle_root_switch(self, event: Select.Changed) -> None:
-        """Switch the active workspace root."""
-        if event.select.id != "workspace-root-select" or event.value is Select.BLANK:
-            return
-
-        selected = Path(str(event.value))
-        reordered = [selected] + [root for root in self.workspace_state.roots if root != selected]
-        self.workspace_state = type(self.workspace_state)(roots=reordered)
-        panel = self.query_one(WorkspacePanel)
-        await panel.update_workspace_state(self.workspace_state)
-        self.workspace_store.save(self.workspace_state)
-        self.refresh_status()
-
     @on(Button.Pressed)
     def handle_button_press(self, event: Button.Pressed) -> None:
         """Route menu-bar button clicks to actions."""
@@ -1292,7 +1274,7 @@ class TuideApp(App[None]):
         """Return palette commands."""
         return [
             CommandItem("workspace.add_root", "Add workspace root", "Add a folder to the workspace"),
-            CommandItem("workspace.remove_root", "Remove workspace root", "Remove the active workspace root"),
+            CommandItem("workspace.remove_root", "Remove workspace root", "Remove a workspace root"),
             CommandItem("search.quick_open", "Quick open", "Open a file by name across the workspace"),
             CommandItem("search.find_file", "Find in file", "Search inside the active file"),
             CommandItem("search.find_workspace", "Global search", "Search text, files, and lightweight symbols across the workspace"),
@@ -1331,10 +1313,10 @@ class TuideApp(App[None]):
 
         focused_id = focused.id or ""
 
-        if focused_id in {"workspace-panel", "workspace-trees", "workspace-root-select", "workspace-roots"} or focused_id.startswith("workspace-tree-"):
+        if focused_id in {"workspace-panel", "workspace-trees", "workspace-roots"} or focused_id.startswith("workspace-tree-"):
             items = [
                 ChoiceItem("workspace.add_root", "Add workspace root"),
-                ChoiceItem("workspace.remove_root", "Remove active workspace root"),
+                ChoiceItem("workspace.remove_root", "Remove workspace root"),
                 ChoiceItem("search.quick_open", "Quick open file"),
                 ChoiceItem("search.find_workspace", "Global search"),
             ]
