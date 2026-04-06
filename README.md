@@ -4,6 +4,26 @@
 
 `v1.0.1` is the first release line that feels product-shaped rather than scaffold-shaped: multi-workspace support, polished Git flows, in-IDE conflict resolution, lightweight global search, and a cleaner interaction model built for users who already live in the terminal.
 
+## Install in one command
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dupeliuhao/tuide/v1.0.1/scripts/install-remote.sh | bash
+```
+
+## Start tuide
+
+After install, the launcher command is:
+
+```bash
+tuide
+```
+
+Open a specific project:
+
+```bash
+tuide /path/to/project
+```
+
 ## What tuide is for
 
 `tuide` is intentionally not trying to be a heavy IDE.
