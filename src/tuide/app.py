@@ -951,8 +951,6 @@ class TuideApp(App[None]):
             self.run_worker(self.action_remove_workspace_root(), exclusive=False)
         elif button_id == "menu-git-session":
             self.run_worker(self.action_git_session(), exclusive=False)
-        elif button_id == "menu-todo":
-            self.run_worker(self.action_todo_list(), exclusive=False)
         elif button_id == "menu-quick-open":
             self.run_worker(self.action_quick_open(), exclusive=False)
         elif button_id == "menu-find-file":
@@ -1300,7 +1298,6 @@ class TuideApp(App[None]):
             CommandItem("git.history", "Git file history", "Show history for the active file"),
             CommandItem("git.blame", "Git blame", "Show blame for the active file"),
             CommandItem("git.line_history", "Git line history", "Show history for a chosen line range"),
-            CommandItem("todo.list", "Todo list", "Open TODO.md from the current workspace"),
             CommandItem("python.outline", "Python outline", "Show function, class, and usage summary for the active file"),
             CommandItem("python.symbol", "Python symbol details", "Show definitions and usages for the symbol at the cursor"),
             CommandItem("code.definition", "Go to definition", "Run code-intelligence definition action"),
@@ -1330,7 +1327,6 @@ class TuideApp(App[None]):
             items = [
                 ChoiceItem("workspace.add_root", "Add workspace root"),
                 ChoiceItem("workspace.remove_root", "Remove active workspace root"),
-                ChoiceItem("todo.list", "Todo list"),
                 ChoiceItem("search.quick_open", "Quick open file"),
                 ChoiceItem("search.find_workspace", "Global search"),
             ]
@@ -1385,7 +1381,6 @@ class TuideApp(App[None]):
             "git.history": self.action_git_history,
             "git.blame": self.action_git_blame,
             "git.line_history": self.action_git_line_history,
-            "todo.list": self.action_todo_list,
             "python.outline": self.action_python_outline,
             "python.symbol": self.action_python_symbol_details,
             "code.definition": self.action_code_goto_definition,
@@ -1464,26 +1459,6 @@ class TuideApp(App[None]):
         chosen_path = Path(selected)
         await self._open_editor_file(chosen_path)
         self.notify(f"Opened {chosen_path.name}")
-
-    async def action_todo_list(self) -> None:
-        """Open the TODO list (or create one in the first workspace root)."""
-        roots = list(self.workspace_state.roots) or [Path.cwd()]
-        todo_path: Path | None = None
-
-        for root in roots:
-            candidate = root / "TODO.md"
-            if candidate.exists():
-                todo_path = candidate
-                break
-
-        if todo_path is None:
-            todo_path = roots[0] / "TODO.md"
-            todo_path.write_text(
-                "# TODO\n\n- [ ] Add tasks here\n",
-                encoding="utf-8",
-            )
-
-        await self._open_editor_file(todo_path)
 
     async def action_find_in_file(self) -> None:
         """Open the inline find bar in the active editor."""
