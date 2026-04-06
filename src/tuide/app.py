@@ -1484,22 +1484,14 @@ class TuideApp(App[None]):
                     for root in self.workspace_state.roots
                 ],
                 placeholder="Filter workspace roots",
+                confirm_label="Remove",
+                confirm_variant="error",
             )
         )
         if not selected:
             return
 
         current = Path(selected)
-        confirmed = await self.wait_for_screen_result(
-            ConfirmDialog(
-                "Remove workspace root",
-                f"Remove {current} from the workspace?",
-                confirm_label="Remove",
-            )
-        )
-        if not confirmed:
-            return
-
         self.workspace_state = self.workspace_store.remove_root(self.workspace_state, current)
         self.workspace_store.save(self.workspace_state)
         self.config.default_workspace = str(self.workspace_state.roots[0])

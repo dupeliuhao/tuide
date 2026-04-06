@@ -485,12 +485,14 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
         placeholder: str = "Type to filter",
         *,
         confirm_label: str | None = None,
+        confirm_variant: str = "success",
     ) -> None:
         super().__init__()
         self._title = title
         self._options = options
         self._placeholder = placeholder
         self._confirm_label = confirm_label
+        self._confirm_variant = confirm_variant
         self._pending_selection: str | None = None
         self._suspend_filtering = False
 
@@ -507,7 +509,12 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
             with Horizontal(id="picker-actions"):
                 yield Button("Back", id="picker-cancel", classes="dismiss-button")
                 if self._confirm_label is not None:
-                    yield Button(self._confirm_label, id="picker-confirm", variant="success", disabled=True)
+                    yield Button(
+                        self._confirm_label,
+                        id="picker-confirm",
+                        variant=self._confirm_variant,
+                        disabled=True,
+                    )
 
     def on_mount(self) -> None:
         self.query_one("#picker-input", Input).focus()
