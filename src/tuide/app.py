@@ -27,6 +27,7 @@ from tuide.widgets.dialogs import (
     CommandPaletteDialog,
     ConfirmDialog,
     ContextMenuScreen,
+    DirectoryPickerDialog,
     FindReferencesScreen,
     GlobalSearchDialog,
     GitCommitScreen,
@@ -1405,9 +1406,9 @@ class TuideApp(App[None]):
         self.action_restart_terminal()
 
     async def action_add_workspace_root(self) -> None:
-        """Prompt for and add a workspace root."""
+        """Pick and add a workspace root."""
         value = await self.wait_for_screen_result(
-            PromptDialog("Add workspace root", placeholder="/path/to/project")
+            DirectoryPickerDialog(str(self.workspace_state.roots[0] if self.workspace_state.roots else Path.cwd()))
         )
         if not value:
             return

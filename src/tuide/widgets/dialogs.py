@@ -573,6 +573,219 @@ class OptionPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
         return item.label
 
 
+class DirectoryPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
+    """Lightweight directory picker with path input and filtered child folders."""
+
+    CSS = """
+    DirectoryPickerDialog {
+        align: center middle;
+    }
+
+    #dir-picker-dialog {
+        width: 86;
+        height: 24;
+        border: solid #30363d;
+        background: #161b22;
+        padding: 0 1;
+    }
+
+    #dir-picker-title {
+        text-style: bold;
+        color: #e6edf3;
+        height: 1;
+    }
+
+    #dir-picker-input {
+        height: 3;
+        margin: 0;
+    }
+
+    #dir-picker-hint {
+        color: #6e7681;
+        height: 1;
+    }
+
+    #dir-picker-options {
+        height: 1fr;
+        border: none;
+        background: #161b22;
+        padding: 0;
+    }
+
+    #dir-picker-options > .option-list--option-highlighted {
+        background: #8a5a16;
+        color: #fff7e6;
+        text-style: bold;
+    }
+
+    #dir-picker-options:focus > .option-list--option-highlighted {
+        background: #8a5a16;
+        color: #fff7e6;
+    }
+
+    #dir-picker-actions {
+        width: 100%;
+        height: 1;
+        align: right middle;
+    }
+
+    Button {
+        height: 1;
+        min-height: 1;
+        padding: 0 2;
+        border: none;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
+    def __init__(self, initial_path: str | None = None) -> None:
+        super().__init__()
+        self._initial_path = initial_path or str(Path.cwd())
+        self._suspend_input = False
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dir-picker-dialog"):
+            yield Label("Add workspace root", id="dir-picker-title")
+            yield Input(value=self._initial_path, placeholder="/path/to/project", id="dir-picker-input")
+            yield Label("Type a path, or pick a child folder below", id="dir-picker-hint")
+            yield PointerTrackingOptionList(id="dir-picker-options")
+            with Horizontal(id="dir-picker-actions"):
+                yield Button("Back", id="dir-picker-cancel", classes="dismiss-button")
+                yield Button("Add", id="dir-picker-confirm", variant="success", disabled=True)
+
+    def on_mount(self) -> None:
+        self._refresh_choices()
+        self.query_one("#dir-picker-input", Input).focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    @on(Button.Pressed, "#dir-picker-cancel")
+    def _on_cancel(self, event: Button.Pressed) -> None:
+        event.stop()
+        self.dismiss(None)
+
+    @on(Button.Pressed, "#dir-picker-confirm")
+    def _on_confirm(self, event: Button.Pressed) -> None:
+        event.stop()
+        self._submit_current_path()
+
+    @on(Input.Submitted, "#dir-picker-input")
+    def _on_submit(self, event: Input.Submitted) -> None:
+        event.stop()
+        self._submit_current_path()
+
+    @on(Input.Changed, "#dir-picker-input")
+    def _on_input_changed(self, event: Input.Changed) -> None:
+        if self._suspend_input:
+            self._suspend_input = False
+            return
+        self._refresh_choices()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id != "dir-picker-options":
+            return
+        chosen = Path(event.option_id)
+        self._suspend_input = True
+        self.query_one("#dir-picker-input", Input).value = str(chosen)
+        self._refresh_choices()
+
+    def _submit_current_path(self) -> None:
+        candidate = self._candidate_directory()
+        if candidate is None:
+            self.query_one("#dir-picker-input", Input).focus()
+            return
+        self.dismiss(str(candidate))
+
+    def _refresh_choices(self) -> None:
+        input_widget = self.query_one("#dir-picker-input", Input)
+        option_list = self.query_one("#dir-picker-options", PointerTrackingOptionList)
+        confirm = self.query_one("#dir-picker-confirm", Button)
+
+        current = input_widget.value.strip()
+        candidate = self._candidate_directory()
+        confirm.disabled = candidate is None
+
+        base_dir, fragment = self._browse_context(current)
+        options: list[Option] = []
+
+        if base_dir is not None:
+            if base_dir.parent != base_dir:
+                options.append(
+                    Option(
+                        f"..  -  {base_dir.parent}",
+                        id=str(base_dir.parent),
+                    )
+                )
+            try:
+                children = sorted(
+                    (
+                        child for child in base_dir.iterdir()
+                        if child.is_dir() and not child.name.startswith(".")
+                    ),
+                    key=lambda path: path.name.lower(),
+                )
+            except OSError:
+                children = []
+
+            for child in children:
+                if fragment and fragment.lower() not in child.name.lower():
+                    continue
+                options.append(
+                    Option(
+                        f"{child.name}  -  {child.parent}",
+                        id=str(child),
+                    )
+                )
+
+        option_list.clear_options()
+        option_list.add_options(options)
+        if option_list.option_count:
+            option_list.highlighted = 0
+
+    def _candidate_directory(self) -> Path | None:
+        raw = self.query_one("#dir-picker-input", Input).value.strip()
+        if not raw:
+            return None
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        try:
+            resolved = path.resolve()
+        except OSError:
+            return None
+        if resolved.exists() and resolved.is_dir():
+            return resolved
+        return None
+
+    def _browse_context(self, raw: str) -> tuple[Path | None, str]:
+        if not raw:
+            return Path.cwd(), ""
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        if raw.endswith("/"):
+            try:
+                return path.resolve(), ""
+            except OSError:
+                return None, ""
+        if path.exists() and path.is_dir():
+            try:
+                return path.resolve(), ""
+            except OSError:
+                return None, ""
+        parent = path.parent
+        try:
+            if parent.exists() and parent.is_dir():
+                return parent.resolve(), path.name
+        except OSError:
+            pass
+        return None, ""
+
+
 class GlobalSearchDialog(EscapeDismissMixin, ModalScreen[tuple[str, str, bool] | None]):
     """Single-step global search dialog with mode selection and query input."""
 
