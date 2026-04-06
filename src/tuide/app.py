@@ -1472,33 +1472,36 @@ class TuideApp(App[None]):
             self.notify("Keep at least one workspace root", severity="warning")
             return
 
-        selected = await self.wait_for_screen_result(
-            OptionPickerDialog(
-                "Remove workspace root",
-                [
-                    ChoiceItem(
-                        id=str(root),
-                        label=root.name,
-                        description=str(root.parent),
-                    )
-                    for root in self.workspace_state.roots
-                ],
-                placeholder="Filter workspace roots",
-                confirm_label="Remove",
-                confirm_variant="error",
+        while len(self.workspace_state.roots) > 1:
+            selected = await self.wait_for_screen_result(
+                OptionPickerDialog(
+                    "Remove workspace root",
+                    [
+                        ChoiceItem(
+                            id=str(root),
+                            label=root.name,
+                            description=str(root.parent),
+                        )
+                        for root in self.workspace_state.roots
+                    ],
+                    placeholder="Filter workspace roots",
+                    confirm_label="Remove",
+                    confirm_variant="error",
+                )
             )
-        )
-        if not selected:
-            return
+            if not selected:
+                return
 
-        current = Path(selected)
-        self.workspace_state = self.workspace_store.remove_root(self.workspace_state, current)
-        self.workspace_store.save(self.workspace_state)
-        self.config.default_workspace = str(self.workspace_state.roots[0])
-        self.config_store.save(self.config)
-        panel = self.query_one(WorkspacePanel)
-        await panel.update_workspace_state(self.workspace_state)
-        self.refresh_status()
+            current = Path(selected)
+            self.workspace_state = self.workspace_store.remove_root(self.workspace_state, current)
+            self.workspace_store.save(self.workspace_state)
+            self.config.default_workspace = str(self.workspace_state.roots[0])
+            self.config_store.save(self.config)
+            panel = self.query_one(WorkspacePanel)
+            await panel.update_workspace_state(self.workspace_state)
+            self.refresh_status()
+
+        self.notify("Keep at least one workspace root", severity="information")
 
     def _find_repo_root(self) -> Path | None:
         """Return the current Git repo root without side effects."""
