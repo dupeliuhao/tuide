@@ -6,7 +6,7 @@ from pathlib import Path
 
 from rich.style import Style
 from rich.text import Text
-from textual.containers import Vertical
+from textual.containers import Vertical, VerticalScroll
 from textual.widgets import DirectoryTree, Label, Select, Static
 from textual.widgets._directory_tree import DirEntry
 from textual.widgets._tree import TreeNode
@@ -127,6 +127,7 @@ class WorkspacePanel(PanelFrame):
     def __init__(self, workspace_state: WorkspaceState) -> None:
         super().__init__("", "", id="workspace-panel")
         self.workspace_state = workspace_state
+        self._dirty_paths: set[str] = set()
 
     @property
     def primary_root(self) -> Path:
@@ -144,36 +145,56 @@ class WorkspacePanel(PanelFrame):
             prompt="Active workspace root",
             allow_blank=False,
         )
-        yield _NarrowDirectoryTree(str(self.primary_root), id="workspace-tree")
+        with VerticalScroll(id="workspace-trees"):
+            for index, root in enumerate(self.workspace_state.roots):
+                yield _NarrowDirectoryTree(str(root), id=f"workspace-tree-{index}", classes="workspace-tree")
 
     def on_mount(self) -> None:
         """Hide the root selector unless it is actually needed."""
         self._sync_root_selector_visibility()
 
-    def set_active_root(self, root: Path) -> None:
-        """Switch the active root shown by the tree."""
-        tree = self.query_one("#workspace-tree", _NarrowDirectoryTree)
-        tree.path = root
-        select = self.query_one("#workspace-root-select", Select)
-        select.value = str(root)
-
-    def update_workspace_state(self, workspace_state: WorkspaceState) -> None:
+    async def update_workspace_state(self, workspace_state: WorkspaceState) -> None:
         """Update summary widgets from a new workspace state."""
         self.workspace_state = workspace_state
         title = self.query_one(".panel-title", Label)
         title.update(f"Workspace ({len(workspace_state.roots)})")
+        summary = self.query_one("#workspace-roots", Static)
+        summary.update("\n".join(f"- {root}" for root in workspace_state.roots[:5]))
         select = self.query_one("#workspace-root-select", Select)
         select.set_options([(str(root), str(root)) for root in workspace_state.roots])
-        self.set_active_root(self.primary_root)
+        select.value = str(self.primary_root)
+        await self._rebuild_trees()
         self._sync_root_selector_visibility()
 
     def set_dirty_paths(self, paths: set[str]) -> None:
         """Pass a set of absolute path strings for files with uncommitted changes."""
+        self._dirty_paths = paths
         try:
-            tree = self.query_one("#workspace-tree", _NarrowDirectoryTree)
-            tree.set_dirty_paths(paths)
+            for tree in self.query(".workspace-tree"):
+                if not isinstance(tree, _NarrowDirectoryTree):
+                    continue
+                tree.set_dirty_paths(paths)
         except Exception:
             pass
+
+    async def reload_trees(self) -> None:
+        """Reload every mounted workspace tree."""
+        try:
+            for tree in self.query(".workspace-tree"):
+                if not isinstance(tree, _NarrowDirectoryTree):
+                    continue
+                await tree.reload()
+        except Exception:
+            pass
+
+    async def _rebuild_trees(self) -> None:
+        """Rebuild the list of root trees from the current workspace state."""
+        container = self.query_one("#workspace-trees", VerticalScroll)
+        await container.remove_children()
+        for index, root in enumerate(self.workspace_state.roots):
+            tree = _NarrowDirectoryTree(str(root), id=f"workspace-tree-{index}", classes="workspace-tree")
+            tree.set_dirty_paths(self._dirty_paths)
+            await container.mount(tree)
 
     def _sync_root_selector_visibility(self) -> None:
         """Only show the root selector when multiple roots exist."""

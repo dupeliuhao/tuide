@@ -265,7 +265,15 @@ class TuideApp(App[None]):
         height: 3;
     }
 
-    #workspace-tree {
+    #workspace-trees {
+        height: 1fr;
+        background: #0d1117;
+        border: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .workspace-tree {
         height: 1fr;
         background: #0d1117;
         border: none;
@@ -917,9 +925,8 @@ class TuideApp(App[None]):
         reordered = [selected] + [root for root in self.workspace_state.roots if root != selected]
         self.workspace_state = type(self.workspace_state)(roots=reordered)
         panel = self.query_one(WorkspacePanel)
-        panel.update_workspace_state(self.workspace_state)
+        await panel.update_workspace_state(self.workspace_state)
         self.workspace_store.save(self.workspace_state)
-        await self.query_one("#workspace-tree", DirectoryTree).reload()
         self.refresh_status()
 
     @on(Button.Pressed)
@@ -1324,7 +1331,7 @@ class TuideApp(App[None]):
 
         focused_id = focused.id or ""
 
-        if focused_id in {"workspace-panel", "workspace-tree", "workspace-root-select", "workspace-roots"}:
+        if focused_id in {"workspace-panel", "workspace-trees", "workspace-root-select", "workspace-roots"} or focused_id.startswith("workspace-tree-"):
             items = [
                 ChoiceItem("workspace.add_root", "Add workspace root"),
                 ChoiceItem("workspace.remove_root", "Remove active workspace root"),
@@ -1423,8 +1430,7 @@ class TuideApp(App[None]):
         self.config.default_workspace = str(self.workspace_state.roots[0])
         self.config_store.save(self.config)
         panel = self.query_one(WorkspacePanel)
-        panel.update_workspace_state(self.workspace_state)
-        await self.query_one("#workspace-tree", DirectoryTree).reload()
+        await panel.update_workspace_state(self.workspace_state)
         self.refresh_status()
 
     async def action_quick_open(self) -> None:
@@ -1500,8 +1506,7 @@ class TuideApp(App[None]):
         self.config.default_workspace = str(self.workspace_state.roots[0])
         self.config_store.save(self.config)
         panel = self.query_one(WorkspacePanel)
-        panel.update_workspace_state(self.workspace_state)
-        await self.query_one("#workspace-tree", DirectoryTree).reload()
+        await panel.update_workspace_state(self.workspace_state)
         self.refresh_status()
 
     def _find_repo_root(self) -> Path | None:
