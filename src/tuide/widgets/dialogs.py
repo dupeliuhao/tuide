@@ -658,6 +658,7 @@ class DirectoryPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
         super().__init__()
         self._initial_path = initial_path or str(Path.cwd())
         self._suspend_input = False
+        self._locked_option_id: str | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dir-picker-dialog"):
@@ -696,12 +697,15 @@ class DirectoryPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
         if self._suspend_input:
             self._suspend_input = False
             return
+        self._locked_option_id = None
         self._refresh_choices()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         if event.option_list.id != "dir-picker-options":
             return
         chosen = Path(event.option_id)
+        self._locked_option_id = str(chosen)
+        event.option_list.track_pointer = False
         self._suspend_input = True
         self.query_one("#dir-picker-input", Input).value = str(chosen)
         self._refresh_choices()
@@ -756,8 +760,25 @@ class DirectoryPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
 
         option_list.clear_options()
         option_list.add_options(options)
-        if option_list.option_count:
-            option_list.highlighted = 0
+        if not option_list.option_count:
+            self._locked_option_id = None
+            option_list.track_pointer = True
+            return
+
+        if self._locked_option_id is not None:
+            for index, option in enumerate(option_list.options):
+                if option.id == self._locked_option_id:
+                    option_list.highlighted = index
+                    option_list.track_pointer = False
+                    break
+            else:
+                self._locked_option_id = None
+                option_list.highlighted = 0
+                option_list.track_pointer = True
+            return
+
+        option_list.highlighted = 0
+        option_list.track_pointer = True
 
     def _candidate_directory(self) -> Path | None:
         raw = self.query_one("#dir-picker-input", Input).value.strip()
@@ -787,6 +808,8 @@ class DirectoryPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
                 return None, ""
         if path.exists() and path.is_dir():
             try:
+                if path.parent.exists() and path.parent.is_dir():
+                    return path.parent.resolve(), path.name
                 return path.resolve(), ""
             except OSError:
                 return None, ""
