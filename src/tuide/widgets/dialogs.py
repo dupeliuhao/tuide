@@ -766,7 +766,8 @@ class DirectoryPickerDialog(EscapeDismissMixin, ModalScreen[str | None]):
             return
 
         if self._locked_option_id is not None:
-            for index, option in enumerate(option_list.options):
+            for index in range(option_list.option_count):
+                option = option_list.get_option_at_index(index)
                 if option.id == self._locked_option_id:
                     option_list.highlighted = index
                     option_list.track_pointer = False
