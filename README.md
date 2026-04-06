@@ -1,181 +1,253 @@
 # tuide
 
-`tuide` is a Linux-first terminal IDE scaffold built with Python and Textual.
+`tuide` is a Linux-first lightweight terminal IDE for Git, diff, workspace search, and AI-assisted local workflows.
 
-## What it does today
+`v1.0.0` is the first release that feels product-shaped rather than scaffold-shaped: multi-workspace support, polished Git flows, in-IDE conflict resolution, lightweight global search, and a cleaner interaction model built for users who already live in the terminal.
 
-The current build is a Linux-first shell with these working or first-pass features:
+## What tuide is for
 
-- left-panel file tree rooted at the current workspace
-- multi-root workspace state with root add/remove prompts and active-root switching
-- center tabbed editor that opens files from the tree
-- editable `TextArea` buffers
-- immediate write-through editing with local-change tracking
-- close active tab with `Ctrl+W`
-- local-change confirmation on tab close and app quit
-- top command/menu bar with clickable actions
-- searchable command palette with `Ctrl+Shift+P`
-- focus-aware context actions with `Ctrl+.`
-- quick open file chooser with `Ctrl+P`
-- in-file search with `Ctrl+F`
-- workspace-wide search with `Ctrl+Shift+F`
-- keybinding help overlay with `?`
-- right-panel embedded terminal intended to run a real shell session
-- keyboard-based panel resizing
-- Git file diff/history/blame tabs for the active file
-- Git line-history tab for an entered line range
-- LSP availability detection for Python and Scala
-- AI fallback request generation when LSP is unavailable
+`tuide` is intentionally not trying to be a heavy IDE.
 
-The long-term roadmap is in [docs/implementation-plan.md](D:\Github\tuide\docs\implementation-plan.md).
+It is built for a workflow where:
 
-## Current project phase
+- coding and refactors often happen through AI CLI tools or the terminal
+- you still want a fast visual shell for diffs, file browsing, Git actions, and conflict resolution
+- you want a local app that stays light and predictable
 
-`tuide` is currently in:
+The design center is:
 
-- Phase 1: editor shell MVP
-- partial Phase 2: dialogs, menu, palette, and interaction polish
-- partial Phase 4: Linux-first embedded terminal path
-- early slices of Git and code-intelligence workflows
+- fast file browsing
+- lightweight editing with immediate local write-through
+- Git-first workflows
+- strong diff visibility
+- minimal UI layers
 
-What is not implemented yet:
+## Highlights in v1.0.0
 
-- mouse drag-to-resize splitters
-- full dropdown menus
-- true LSP request execution
-- embedded AI transport into the terminal session
-- synchronized/polished side-by-side diff behavior
-- inline blame gutter rendering
+- multi-workspace file tree with add/remove workspace roots
+- lightweight directory picker for adding roots
+- file tree dirty markers on files and parent directories
+- tabbed editor with persistent local changes
+- quick open, file search, and global workspace search
+- Git session menu with commit, push, fetch, update, merge, branch switch, and branch history
+- push preview that shows unpushed commits, changed files, and diffs before push
+- `Compare With Branch` and `Compare With Remote` for the active file
+- in-IDE update and merge conflict resolution
+- full-file three-pane conflict resolver with `Ours`, `Result`, and `Theirs`
+- branch history and search flows that behave as layered single-tab workflows
+- embedded terminal panel available on demand, but hidden by default
 
-## Linux install and test
+## Platform support
 
-Use these steps on your Linux machine:
+Right now `tuide` is actively targeted at Linux.
 
-Python requirement:
+Expected environment:
 
-- Python 3.11 or newer
+- Linux
+- Python `3.11+`
+- a UTF-8 terminal
 
-Check it with:
+Git-heavy features work best if these tools are also installed:
 
-```bash
-python3 --version
-```
+- `git`
+- `rg` (`ripgrep`)
+- `fd` or `fdfind`
+- `delta` for the best diff rendering
 
-### 1. Clone or update the repo
+`tuide` can still run without every optional tool, but search and diff quality are better when they are present.
+
+## Install
+
+### 1. Clone the repo
 
 ```bash
-git clone <your-repo-url> tuide
+git clone https://github.com/dupeliuhao/tuide.git
 cd tuide
 ```
 
 If you already have the repo:
 
 ```bash
-cd tuide
 git pull
 ```
 
-### 2. Create a virtual environment
+### 2. Install Linux dependencies
+
+Ubuntu / Debian:
+
+```bash
+sudo apt update
+sudo apt install -y git python3 python3-venv python3-pip ripgrep fd-find
+```
+
+Optional but recommended:
+
+```bash
+sudo apt install -y git-delta
+```
+
+If your distro provides `fdfind` instead of `fd`, `tuide` can still use it once `fd` is available on `PATH`. If needed:
+
+```bash
+mkdir -p ~/.local/bin
+ln -sf "$(command -v fdfind)" ~/.local/bin/fd
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### 3. Create and activate a virtual environment
 
 ```bash
 python3 -m venv vtuide
 source vtuide/bin/activate
 ```
 
-### 3. Install the app
+### 4. Install tuide
+
+Recommended install:
 
 ```bash
 python -m pip install --upgrade pip
 pip install -e .[linux]
 ```
 
-`tuide` currently expects a Textual version that stays compatible with `textual-terminal`.
-The project now pins `textual` to a compatible range in `pyproject.toml`, so a fresh install
-should give you a real embedded shell on Linux.
-The project also now installs `textual[syntax]`, which is required for `TextArea` syntax
-highlighting. If Python files still look plain after pulling, refresh the environment so the
-syntax extras are installed.
-
-If `textual-terminal` fails to install for any reason, you can still test the app shell without the embedded terminal:
+Fallback install if `textual-terminal` is unavailable in your environment:
 
 ```bash
 pip install -e .
 ```
 
-If you installed the project before this pin was added, refresh the environment with:
+### 5. Launch
 
-```bash
-pip install --upgrade --force-reinstall -e .[linux]
-```
-
-If highlighting still does not appear, run this once inside the activated environment:
-
-```bash
-pip install --upgrade --force-reinstall "textual[syntax]>=0.58.0,<0.59.0"
-```
-
-If `textual-terminal` still ends up incompatible with your local environment, `tuide` will fall back to a placeholder instead of crashing on startup.
-
-### 4. Launch the app
-
-Run from the repo root so the workspace tree starts there by default:
+From the repo root:
 
 ```bash
 tuide
 ```
 
-If the entrypoint is not available for some reason, use:
+Open a specific directory:
+
+```bash
+tuide /path/to/project
+```
+
+Check the installed version:
+
+```bash
+tuide --version
+```
+
+Fallback entrypoint:
 
 ```bash
 python -m tuide.main
 ```
 
-## First smoke test checklist
+## First-run checklist
 
-Once the app is open, try this:
+For the smoothest first run:
 
-1. Confirm the left panel shows the repo files.
-2. Select a file in the tree and confirm it opens in the center tab area.
-3. Edit the file and confirm the tab title gains a `*`.
-4. Edit a file and confirm the dirty marker stays visible after the text is written locally.
-5. Press `Ctrl+W` and confirm the local-change dialog appears.
-6. Press `?` and confirm the help overlay appears.
-7. Press `Esc` and confirm focus returns toward the editor.
-8. Press `Ctrl+Shift+P` and confirm the command palette opens and filters commands.
-9. Press `Ctrl+P`, search for a filename, and choose a match from the picker.
-10. Press `Ctrl+.` in different panels and confirm context-specific actions appear.
-11. Press `Ctrl+F` and confirm active-file results open in a tab.
-12. Press `Ctrl+Shift+F` and confirm workspace-wide matches open in a tab.
-13. Add a second workspace root and switch between roots from the left panel selector.
-14. Try `Diff`, `History`, `Blame`, or `Line Hist` from the top bar on a file inside a Git repo.
-15. Press `?` or use the top bar code actions to exercise the LSP and AI fallback plumbing.
-16. Confirm the right panel starts a real shell session.
-17. Run a simple command such as `ls`.
-18. Try launching an external CLI such as `kiro-cli` if it is installed.
-19. Press `Ctrl+R` and confirm the terminal restarts.
-20. Press `Ctrl+Q` with local changes and confirm the quit warning appears.
+1. Start inside a Git repo you actually want to work in.
+2. Press `Ctrl+Shift+P` and confirm the command palette opens.
+3. Press `Ctrl+P` and quick-open a file.
+4. Edit a file and confirm the tab turns yellow and the file tree marks it dirty.
+5. Open `Git` from the top bar and confirm your repo and branch are shown correctly.
+6. Try `Commit`, then `Push Preview`.
+7. Run `Global Search` with `Ctrl+Shift+F`.
+8. If you want the embedded terminal, toggle it on with `Ctrl+J`.
 
-## Keybindings right now
+## Core interaction model
+
+`tuide` has a few important product rules:
+
+- edits write through to local disk immediately
+- “dirty” means different from Git `HEAD`, not “unsaved”
+- `Esc` should unwind one UI layer at a time
+- Git flows should stay inside `tuide` whenever possible
+- terminal is secondary to Git/diff/editor workflows
+
+This means:
+
+- there is no separate save step
+- `Ctrl+S` is intentionally gone
+- commit/push/update/merge flows are the primary polished workflows
+
+## Keybindings
 
 - `Tab` / `Shift+Tab`: cycle focus
 - `Ctrl+W`: close active tab
-- `Ctrl+Q`: quit with unsaved-change protection
+- `Ctrl+Q`: quit with confirmation
 - `Ctrl+P`: quick open
 - `Ctrl+.`: context actions
 - `Ctrl+F`: find in active file
-- `Ctrl+Shift+F`: search in workspace
-- `Ctrl+B`: toggle workspace panel
+- `Ctrl+Shift+F`: global search
+- `Ctrl+B`: toggle file tree
 - `Ctrl+J`: toggle terminal panel
 - `Ctrl+R`: restart terminal
 - `Ctrl+Shift+P`: command palette
 - `Ctrl+Alt+,` / `Ctrl+Alt+.`: resize workspace panel
 - `Ctrl+Alt+[` / `Ctrl+Alt+]`: resize terminal panel
 - `?`: show help
-- `Esc`: return focus to the editor
+- `Esc`: go back one layer, or open quit confirmation from the main view
 
-## Notes
+## Git features
 
-- The app is currently Linux-first by design.
-- Windows and macOS abstraction seams are already present, but those targets are not the active testing focus yet.
-- The right panel is meant to be a normal terminal, not a dedicated AI-only surface.
-- If `git`, LSP servers, or terminal dependencies are missing, those advanced features are expected to be absent for now.
+Current Git flows are centered on a single active repo at a time:
+
+- `Commit`
+- `Push` with preview of unpushed commits
+- `Fetch`
+- `Update`
+- `Merge Branch`
+- `Branch History`
+- compare current file with a branch or with upstream remote
+
+In multi-workspace mode:
+
+- `Global Search` is cross-workspace
+- Git actions are single-repo and follow the active file when possible
+
+## Conflict resolution
+
+When `Update` or `Merge Branch` encounters conflicts, `tuide` keeps the workflow inside the app:
+
+- choose merge or rebase when update diverges
+- resolve conflicts in a three-pane full-file view
+- left: `Ours`
+- middle: `Result`
+- right: `Theirs`
+
+The goal is not to outgrow JetBrains or VS Code. The goal is to make Git-heavy AI-assisted terminal work less painful.
+
+## Troubleshooting
+
+### Search feels incomplete
+
+Install `ripgrep` and `fd`, then reopen `tuide`.
+
+### Embedded terminal looks different from your host terminal
+
+`tuide` now tries to inherit the host terminal environment more closely, but the embedded panel is still a terminal widget inside a Textual app, not your raw host terminal.
+
+### Diff rendering is less polished than `delta`
+
+Install `git-delta`:
+
+```bash
+sudo apt install git-delta
+```
+
+`tuide` will also try to install `delta` automatically on startup if it is missing and the environment allows it.
+
+### `textual-terminal` install fails
+
+Use:
+
+```bash
+pip install -e .
+```
+
+`tuide` will still run without the embedded terminal backend.
+
+## Release notes
+
+See [CHANGELOG.md](CHANGELOG.md) for the `v1.0.0` release summary.

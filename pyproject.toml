@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tuide"
-version = "0.1.0"
-description = "Linux-first terminal IDE scaffold built with Textual."
+version = "1.0.0"
+description = "Linux-first lightweight terminal IDE for Git, diff, and AI-assisted workflows."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

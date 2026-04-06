@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 from tuide.app import TuideApp
+from tuide import __version__
 
 
 def _ensure_delta() -> None:
@@ -59,6 +60,11 @@ def _ensure_delta() -> None:
 def main() -> None:
     """Run the Textual application."""
     parser = argparse.ArgumentParser(prog="tuide", description="Terminal IDE")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+    )
     parser.add_argument(
         "path",
         nargs="?",
