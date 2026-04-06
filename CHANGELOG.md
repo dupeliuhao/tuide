@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.0.1 - 2026-04-06
+
+Installer and release polish update.
+
+### Added
+
+- one-line remote install flow via `curl | bash`
+- automatic `~/.local/bin/tuide` launcher installation
+- release-ready bootstrap path for users who do not want to manually manage the virtual environment
+
+### Improved
+
+- installation docs now lead with the shortest working path
+- local installer now leaves a runnable `tuide` command behind
+- installer options now support launcher control and custom install layout
+
 ## v1.0.0 - 2026-04-06
 
 First stable release of `tuide` as a lightweight Linux-first terminal IDE focused on Git, diff, search, and AI-assisted local workflows.

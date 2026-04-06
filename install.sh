@@ -7,6 +7,8 @@ VENV_DIR="$ROOT_DIR/vtuide"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 INSTALL_LINUX_EXTRA=1
 INSTALL_SYSTEM_DEPS=1
+INSTALL_LAUNCHER=1
+LAUNCHER_DIR="${LAUNCHER_DIR:-$HOME/.local/bin}"
 
 usage() {
     cat <<'EOF'
@@ -20,6 +22,8 @@ Options:
   --no-terminal        Install without textual-terminal extras
   --venv-dir PATH      Use a custom virtualenv directory
   --python BIN         Use a specific Python executable
+  --launcher-dir PATH  Install the tuide launcher into this directory
+  --no-launcher        Do not install a launcher into ~/.local/bin
   --help               Show this help
 
 Examples:
@@ -27,6 +31,7 @@ Examples:
   ./install.sh --skip-system-deps
   ./install.sh --venv-dir .venv
   ./install.sh --no-terminal
+  ./install.sh --launcher-dir ~/.local/bin
 EOF
 }
 
@@ -175,17 +180,75 @@ install_python_deps() {
     "$VENV_DIR/bin/pip" install -e "$ROOT_DIR"
 }
 
+install_launcher() {
+    if [ "$INSTALL_LAUNCHER" -ne 1 ]; then
+        return
+    fi
+
+    mkdir -p "$LAUNCHER_DIR"
+    cat >"$LAUNCHER_DIR/tuide" <<EOF
+#!/usr/bin/env bash
+exec "$VENV_DIR/bin/tuide" "\$@"
+EOF
+    chmod +x "$LAUNCHER_DIR/tuide"
+    log "Installed launcher at $LAUNCHER_DIR/tuide"
+}
+
+print_path_hint() {
+    case ":$PATH:" in
+        *":$LAUNCHER_DIR:"*) ;;
+        *)
+            cat <<EOF
+
+Add this to your shell profile if needed:
+
+  export PATH="$LAUNCHER_DIR:\$PATH"
+EOF
+            ;;
+    esac
+}
+
 print_finish() {
-    cat <<EOF
+    if [ "$INSTALL_LAUNCHER" -eq 1 ]; then
+        cat <<EOF
 
 tuide install complete.
 
-Next steps:
+Launcher:
+
+  $LAUNCHER_DIR/tuide
+
+Recommended:
+
+  tuide
+
+Open a specific project:
+
+  tuide /path/to/project
+
+If you prefer using the virtual environment directly:
 
   source "$VENV_DIR/bin/activate"
   tuide
 
-Or open a specific project:
+Version check:
+
+  "$VENV_DIR/bin/python" -m tuide.main --version
+EOF
+        print_path_hint
+        return
+    fi
+
+    cat <<EOF
+
+tuide install complete.
+
+Use the virtual environment directly:
+
+  source "$VENV_DIR/bin/activate"
+  tuide
+
+Open a specific project:
 
   source "$VENV_DIR/bin/activate"
   tuide /path/to/project
@@ -224,6 +287,21 @@ while [ "$#" -gt 0 ]; do
             fi
             PYTHON_BIN="$1"
             ;;
+        --launcher-dir)
+            shift
+            if [ "$#" -eq 0 ]; then
+                echo "--launcher-dir requires a path"
+                exit 1
+            fi
+            if [[ "$1" = /* ]]; then
+                LAUNCHER_DIR="$1"
+            else
+                LAUNCHER_DIR="$ROOT_DIR/$1"
+            fi
+            ;;
+        --no-launcher)
+            INSTALL_LAUNCHER=0
+            ;;
         --help|-h)
             usage
             exit 0
@@ -245,4 +323,5 @@ ensure_python_version
 create_venv
 ensure_fd_alias
 install_python_deps
+install_launcher
 print_finish

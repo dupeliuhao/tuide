@@ -2,7 +2,7 @@
 
 `tuide` is a Linux-first lightweight terminal IDE for Git, diff, workspace search, and AI-assisted local workflows.
 
-`v1.0.0` is the first release that feels product-shaped rather than scaffold-shaped: multi-workspace support, polished Git flows, in-IDE conflict resolution, lightweight global search, and a cleaner interaction model built for users who already live in the terminal.
+`v1.0.1` is the first release line that feels product-shaped rather than scaffold-shaped: multi-workspace support, polished Git flows, in-IDE conflict resolution, lightweight global search, and a cleaner interaction model built for users who already live in the terminal.
 
 ## What tuide is for
 
@@ -22,7 +22,7 @@ The design center is:
 - strong diff visibility
 - minimal UI layers
 
-## Highlights in v1.0.0
+## Highlights in v1.0.1
 
 - multi-workspace file tree with add/remove workspace roots
 - lightweight directory picker for adding roots
@@ -36,6 +36,8 @@ The design center is:
 - full-file three-pane conflict resolver with `Ours`, `Result`, and `Theirs`
 - branch history and search flows that behave as layered single-tab workflows
 - embedded terminal panel available on demand, but hidden by default
+- one-line `curl | bash` installer
+- automatic launcher installation into `~/.local/bin/tuide`
 
 ## Platform support
 
@@ -61,19 +63,32 @@ Git-heavy features work best if these tools are also installed:
 Fastest path:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/dupeliuhao/tuide/v1.0.1/scripts/install-remote.sh | bash
+```
+
+That path will:
+
+- clone or update `tuide` into `~/.local/share/tuide`
+- create the virtual environment
+- install `tuide`
+- install a launcher at `~/.local/bin/tuide`
+
+If you prefer cloning first and installing locally:
+
+```bash
 git clone https://github.com/dupeliuhao/tuide.git
 cd tuide
 ./install.sh
 ```
 
-That script will:
+That local script will:
 
 - install common Linux dependencies when possible
 - create `vtuide`
 - install `tuide`
 - fall back automatically if the terminal extra cannot be installed
 
-If you want the manual path instead, use the steps below.
+If you want the full manual path instead, use the steps below.
 
 ### 1. Clone the repo
 
@@ -168,6 +183,8 @@ The installer also supports a few useful flags:
 ./install.sh --skip-system-deps
 ./install.sh --no-terminal
 ./install.sh --venv-dir .venv
+./install.sh --launcher-dir ~/.local/bin
+./install.sh --no-launcher
 ```
 
 ## First-run checklist
@@ -278,4 +295,4 @@ pip install -e .
 
 ## Release notes
 
-See [CHANGELOG.md](CHANGELOG.md) for the `v1.0.0` release summary.
+See [CHANGELOG.md](CHANGELOG.md) for the `v1.0.1` release summary.
